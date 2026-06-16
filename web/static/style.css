@@ -41,14 +41,14 @@ body {
   justify-content: space-between;
   padding: 0 4px;
 }
-.brand { display: flex; align-items: center; gap: 10px; }
+.brand { display: flex; align-items: center; gap: 12px; }
 .brand-mark {
-  width: 48px;
+  width: 72px;
   height: auto;
   object-fit: contain;
   display: block;
 }
-.brand-name { font-weight: 700; font-size: 18px; letter-spacing: -0.2px; }
+.brand-name { font-weight: 700; font-size: 22px; letter-spacing: -0.2px; }
 .topbar-tag { font-size: 10.5px; color: var(--text-dim); font-family: var(--mono); }
 
 /* ── Input bar ── */
