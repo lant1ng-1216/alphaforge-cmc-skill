@@ -180,7 +180,8 @@ function renderMetrics(r) {
 function renderChart(r) {
   const body = document.getElementById("chart-body");
   if (r.chart_url) {
-    const src = `${r.chart_url}?t=${Date.now()}`;
+    // chart_url is a data: URI (base64 PNG), not a server path — no cache-busting needed/possible.
+    const src = r.chart_url;
     const downloadName = r.chart_download_name || "alphaforge_chart.png";
     body.innerHTML = `<img src="${src}" alt="AlphaForge chart"><div class="chart-hint">Click to expand</div>`;
     body.querySelector("img").addEventListener("click", () => openLightbox(src, downloadName));

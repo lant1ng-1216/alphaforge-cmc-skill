@@ -5,14 +5,14 @@ Requires matplotlib (pip install matplotlib).
 import os
 
 
-def plot_results(result: dict, ohlcv: list[dict], output_path: str = None) -> str:
+def _build_figure(result: dict, ohlcv: list[dict]):
     """
-    Generate a 3-panel chart:
+    Build the 3-panel chart figure:
       Panel 1: Price + EMA20 + EMA50 with regime shading
       Panel 2: RSI14 + Fear & Greed
       Panel 3: Strategy equity curve vs Buy-and-Hold
 
-    Returns the saved file path.
+    Returns the matplotlib Figure (caller is responsible for saving/closing).
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -153,15 +153,39 @@ def plot_results(result: dict, ohlcv: list[dict], output_path: str = None) -> st
     )
 
     plt.tight_layout(rect=[0, 0, 1, 0.97])
+    return fig
 
+
+def plot_results(result: dict, ohlcv: list[dict], output_path: str = None) -> str:
+    """Render the chart and save it to disk. Returns the saved file path."""
+    import matplotlib.pyplot as plt
+
+    fig = _build_figure(result, ohlcv)
     if output_path is None:
         asset = result["intent"]["asset"]
         tf = result["intent"]["timeframe"]
+        regime = result["regime"]["primary"]
         output_path = os.path.join(
             os.path.dirname(__file__), "..", "..", "demo",
             f"alphaforge_{asset}_{tf}_{regime}.png",
         )
     output_path = os.path.abspath(output_path)
-    plt.savefig(output_path, dpi=150, bbox_inches="tight", facecolor="#0f1117")
+    fig.savefig(output_path, dpi=150, bbox_inches="tight", facecolor="#0f1117")
     plt.close(fig)
     return output_path
+
+
+def plot_results_bytes(result: dict, ohlcv: list[dict]) -> bytes:
+    """
+    Render the chart entirely in memory and return PNG bytes — used by
+    serverless deployments (e.g. Vercel) where the filesystem is ephemeral
+    and a saved file can't be relied on to still exist on the next request.
+    """
+    import io
+    import matplotlib.pyplot as plt
+
+    fig = _build_figure(result, ohlcv)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor="#0f1117")
+    plt.close(fig)
+    return buf.getvalue()

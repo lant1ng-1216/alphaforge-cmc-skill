@@ -1,0 +1,2 @@
+fastapi>=0.110
+matplotlib>=3.7

@@ -1,14 +1,18 @@
 """
 AlphaForge Web — FastAPI backend serving the browser demo.
 
-Run:
+Run locally:
     export CMC_API_KEY=your_key_here
     python web/server.py
+
+Charts are rendered to an in-memory PNG and returned to the client as a
+base64 data URI (see plot_results_bytes) rather than written to disk, so
+this also runs correctly on stateless/serverless hosts (Vercel, etc.) whose
+filesystem isn't guaranteed to persist between requests.
 """
-import hashlib
+import base64
 import os
 import sys
-import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
@@ -19,13 +23,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from alphaforge import generate_strategy
-from alphaforge.visualizer import plot_results
+from alphaforge.visualizer import plot_results_bytes
 
 CMC_API_KEY = os.getenv("CMC_API_KEY")
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-CHARTS_DIR = os.path.join(STATIC_DIR, "charts")
-os.makedirs(CHARTS_DIR, exist_ok=True)
 
 app = FastAPI(title="AlphaForge API")
 app.add_middleware(
@@ -63,10 +65,8 @@ def generate(req: GenerateRequest):
     chart_url = None
     download_name = None
     try:
-        chart_name = f"{hashlib.sha1(user_input.encode()).hexdigest()[:10]}_{int(time.time())}.png"
-        chart_path = os.path.join(CHARTS_DIR, chart_name)
-        plot_results(result, ohlcv, output_path=chart_path)
-        chart_url = f"/static/charts/{chart_name}"
+        png_bytes = plot_results_bytes(result, ohlcv)
+        chart_url = "data:image/png;base64," + base64.b64encode(png_bytes).decode("ascii")
         asset = result["intent"]["asset"]
         timeframe = result["intent"]["timeframe"]
         regime = result["regime"]["primary"]
