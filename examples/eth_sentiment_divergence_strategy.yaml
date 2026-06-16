@@ -1,0 +1,67 @@
+version: "1.0"
+generated_by: AlphaForge
+asset: ETH
+quote_asset: USDT
+timeframe: 4h
+strategy_type: sentiment_divergence
+
+market_regime:
+  primary: sentiment_overheated
+  secondary:
+    - derivatives_crowded_long
+
+features:
+  technical:
+    - ema_20
+    - rsi_14
+    - volume_zscore
+    - macd_histogram
+  sentiment:
+    - fear_greed_score
+    - social_attention_zscore
+  derivatives:
+    - funding_rate_zscore
+    - open_interest_change
+
+long_setup:
+  conditions:
+    - price_momentum_10 > 0
+    - social_attention_zscore between 0.5 and 2.0
+    - volume_zscore > 0.7
+    - fear_greed_score < 75
+    - rsi_14 between 40 and 65
+
+avoid_setup:
+  conditions:
+    - social_attention_zscore > 3
+    - rsi_14 > 78
+    - funding_rate_zscore > 2
+    - fear_greed_score > 80
+
+exit_rules:
+  any:
+    - close < ema_20
+    - rsi_14 > 75
+    - social_attention_zscore > 3
+
+risk_management:
+  max_position_size_pct: 20
+  stop_loss_pct: 6
+  max_strategy_drawdown_pct: 12
+
+backtest:
+  start_date: "2025-06-01"
+  end_date: "2026-06-01"
+  initial_capital: 10000
+  transaction_cost_bps: 10
+  slippage_bps: 5
+  benchmark: buy_and_hold
+
+evaluation_metrics:
+  - total_return
+  - annualized_return
+  - sharpe_ratio
+  - max_drawdown
+  - win_rate
+  - profit_factor
+  - exposure_time

@@ -1,0 +1,25 @@
+strategy_name: VolatilityBreakout
+description: >
+  Waits for low-volatility compression phases, then enters on confirmed breakout with volume.
+  Ideal for low_volatility_accumulation regimes. Will not trade during high-chop environments.
+
+applicable_regimes:
+  - low_volatility_accumulation
+
+entry_rules:
+  all:
+    - realized_volatility_percentile < 30
+    - close > rolling_high_20
+    - volume_zscore > 1.2
+    - atr_expanding == true
+
+exit_rules:
+  any:
+    - close < breakout_entry_level
+    - atr_stop_triggered == true
+    - momentum_decay == true
+
+risk_management:
+  max_position_size_pct: 20
+  stop_loss_atr_multiple: 2.0
+  max_strategy_drawdown_pct: 15

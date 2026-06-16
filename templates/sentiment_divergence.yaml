@@ -1,0 +1,35 @@
+strategy_name: SentimentDivergence
+description: >
+  Enters when price momentum exists but sentiment has NOT yet reached extreme levels.
+  Avoids both overheated entries and fearful exits. Captures early-trend moves before crowd piles in.
+
+applicable_regimes:
+  - sentiment_overheated
+  - bearish_trend
+  - derivatives_crowded_long
+
+long_setup:
+  conditions:
+    - price_momentum_10 > 0
+    - social_attention_zscore between 0.5 and 2.0
+    - volume_zscore > 0.7
+    - fear_greed_score < 75
+    - rsi_14 between 40 and 65
+
+avoid_setup:
+  conditions:
+    - social_attention_zscore > 3
+    - rsi_14 > 78
+    - funding_rate_zscore > 2
+    - fear_greed_score > 80
+
+exit_rules:
+  any:
+    - close < ema_20
+    - rsi_14 > 75
+    - social_attention_zscore > 3
+
+risk_management:
+  max_position_size_pct: 20
+  stop_loss_pct: 6
+  max_strategy_drawdown_pct: 12

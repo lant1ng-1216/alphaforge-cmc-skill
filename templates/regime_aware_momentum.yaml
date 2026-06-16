@@ -1,0 +1,36 @@
+strategy_name: RegimeAwareMomentum
+description: >
+  Enters medium-term momentum positions when trend, volume, and sentiment all align.
+  Avoids entry when market is overheated or derivatives crowding is elevated.
+
+applicable_regimes:
+  - bullish_trend
+  - neutral
+
+entry_rules:
+  all:
+    - close > ema_20
+    - ema_20 > ema_50
+    - macd_histogram > 0
+    - rsi_14 >= 50
+    - rsi_14 <= 70
+    - volume_zscore > 0.8
+
+exit_rules:
+  any:
+    - close < ema_20
+    - macd_histogram < 0
+    - "rsi_14 > 80 AND rsi_14_declining == true"
+
+filters:
+  sentiment_guard:
+    avoid_entry_if_fear_greed_above: 85
+    reduce_position_if_social_attention_zscore_above: 2.5
+  derivatives_guard:
+    reduce_position_if_funding_rate_zscore_above: 1.5
+
+risk_management:
+  max_position_size_pct: 25
+  stop_loss_pct: 7
+  trailing_stop_pct: 9
+  max_strategy_drawdown_pct: 15

@@ -1,0 +1,29 @@
+strategy_name: PanicReversal
+description: >
+  Contrarian mean-reversion strategy targeting capitulation conditions.
+  Enters only when extreme fear, oversold technicals, and price stabilization coincide.
+
+applicable_regimes:
+  - panic_reversal
+  - bearish_trend
+
+entry_rules:
+  all:
+    - rsi_14 < 30
+    - fear_greed_score < 25
+    - close_distance_from_ema_50_pct < -12
+    - volume_zscore > 1.5
+    - close > previous_bar_low
+
+exit_rules:
+  any:
+    - close >= ema_20
+    - rsi_14 >= 55
+    - take_profit_pct >= 12
+    - max_holding_bars >= 18
+
+risk_management:
+  max_position_size_pct: 12
+  stop_loss_pct: 5
+  max_strategy_drawdown_pct: 10
+  max_holding_period_bars: 18

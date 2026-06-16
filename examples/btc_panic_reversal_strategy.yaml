@@ -1,0 +1,59 @@
+version: "1.0"
+generated_by: AlphaForge
+asset: BTC
+quote_asset: USDT
+timeframe: 4h
+strategy_type: panic_reversal
+
+market_regime:
+  primary: panic_reversal
+  secondary:
+    - extreme_fear
+
+features:
+  technical:
+    - rsi_14
+    - ema_20
+    - ema_50
+    - volume_zscore
+    - atr_14
+  sentiment:
+    - fear_greed_score
+
+entry_rules:
+  all:
+    - rsi_14 < 30
+    - fear_greed_score < 25
+    - close_distance_from_ema_50_pct < -12
+    - volume_zscore > 1.5
+    - close > previous_bar_low
+
+exit_rules:
+  any:
+    - close >= ema_20
+    - rsi_14 >= 55
+    - take_profit_pct >= 12
+    - max_holding_bars >= 18
+
+risk_management:
+  max_position_size_pct: 12
+  stop_loss_pct: 5
+  max_strategy_drawdown_pct: 10
+  max_holding_period_bars: 18
+
+backtest:
+  start_date: "2025-06-01"
+  end_date: "2026-06-01"
+  initial_capital: 10000
+  transaction_cost_bps: 10
+  slippage_bps: 5
+  benchmark: buy_and_hold
+
+evaluation_metrics:
+  - total_return
+  - annualized_return
+  - sharpe_ratio
+  - max_drawdown
+  - win_rate
+  - profit_factor
+  - exposure_time

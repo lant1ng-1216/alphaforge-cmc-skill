@@ -1,0 +1,65 @@
+version: "1.0"
+generated_by: AlphaForge
+asset: BNB
+quote_asset: USDT
+timeframe: 4h
+strategy_type: regime_aware_momentum
+
+market_regime:
+  primary: bullish_trend
+  secondary:
+    - moderate_sentiment
+
+features:
+  technical:
+    - ema_20
+    - ema_50
+    - rsi_14
+    - macd_histogram
+    - volume_zscore
+    - atr_14
+  sentiment:
+    - fear_greed_score
+
+entry_rules:
+  all:
+    - close > ema_20
+    - ema_20 > ema_50
+    - macd_histogram > 0
+    - rsi_14 >= 50
+    - rsi_14 <= 70
+    - volume_zscore > 0.8
+
+exit_rules:
+  any:
+    - close < ema_20
+    - macd_histogram < 0
+    - "rsi_14 > 80 AND rsi_14_declining == true"
+
+filters:
+  avoid_entry_if:
+    - fear_greed_score > 85
+    - rsi_14 > 75
+
+risk_management:
+  max_position_size_pct: 25
+  stop_loss_pct: 7
+  trailing_stop_pct: 9
+  max_strategy_drawdown_pct: 15
+
+backtest:
+  start_date: "2024-01-01"
+  end_date: "2026-06-01"
+  initial_capital: 10000
+  transaction_cost_bps: 10
+  slippage_bps: 5
+  benchmark: buy_and_hold
+
+evaluation_metrics:
+  - total_return
+  - annualized_return
+  - sharpe_ratio
+  - max_drawdown
+  - win_rate
+  - profit_factor
+  - exposure_time
