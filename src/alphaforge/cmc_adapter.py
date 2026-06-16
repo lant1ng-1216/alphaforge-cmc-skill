@@ -109,12 +109,22 @@ class CMCAdapter:
                 for candle in raw
             ]
         except Exception:
-            # Fallback: CMC OHLCV (requires Pro plan)
+            # Fallback: CMC OHLCV historical (used when Binance is unreachable,
+            # e.g. blocked from a cloud/serverless IP range). CMC returns a LIST
+            # per symbol since multiple tokens can share the same ticker
+            # (impersonators, delisted duplicates) — same shape quirk as
+            # get_quote's v2 response. Pick the first entry that actually has
+            # quote history; copycat entries typically come back with [].
             data = self._get(
                 "/v2/cryptocurrency/ohlcv/historical",
                 {"symbol": symbol, "convert": "USDT", "count": count, "interval": "daily"},
             )
-            quotes = data["data"]["quotes"]
+            entries = data["data"].get(symbol) or data["data"].get(symbol.upper()) or []
+            if isinstance(entries, dict):
+                entries = [entries]
+            quotes = next((e["quotes"] for e in entries if e.get("quotes")), None)
+            if not quotes:
+                raise ValueError(f"No CMC OHLCV history found for symbol: {symbol}")
             return [
                 {
                     "time": q["time_open"],
