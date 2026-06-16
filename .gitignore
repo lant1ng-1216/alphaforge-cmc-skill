@@ -8,3 +8,6 @@ web/static/charts/*.png
 .venv/
 venv/
 .vercel
+video/node_modules/
+video/out/
+video/.remotion/
