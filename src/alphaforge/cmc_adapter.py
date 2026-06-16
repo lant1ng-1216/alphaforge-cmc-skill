@@ -9,6 +9,7 @@ import time
 from typing import Optional
 
 CMC_BASE = "https://pro-api.coinmarketcap.com"
+CMC_MCP_URL = "https://mcp.coinmarketcap.com/mcp"
 
 # Module-level cache for the full symbol list — it rarely changes and is
 # expensive to refetch, so we share it across CMCAdapter instances/requests.
@@ -73,6 +74,7 @@ class CMCAdapter:
             q = info["quote"]["USDT"]
             return {
                 "symbol": symbol,
+                "cmc_id": info.get("id"),
                 "price": q["price"],
                 "volume_24h": q["volume_24h"],
                 "volume_change_24h": q["volume_change_24h"],
@@ -82,6 +84,60 @@ class CMCAdapter:
                 "market_cap": q["market_cap"],
             }
         raise ValueError(f"Symbol not found: {symbol}")
+
+    def _mcp_call(self, tool_name: str, arguments: dict = None) -> Optional[dict]:
+        """
+        Call a tool on the CMC Data MCP server (https://mcp.coinmarketcap.com/mcp).
+        This is a plain JSON-RPC-over-HTTP POST — no session handshake or SSE
+        framing required in practice, so no MCP SDK dependency is needed.
+        Returns None on any failure so callers can degrade gracefully (this is
+        a supplementary live cross-check, not a dependency the core pipeline
+        needs to function).
+        """
+        body = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": tool_name, "arguments": arguments or {}},
+        }).encode()
+        req = urllib.request.Request(
+            CMC_MCP_URL,
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+                "X-CMC-MCP-API-KEY": self.api_key,
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                envelope = json.loads(r.read())
+            text = envelope["result"]["content"][0]["text"]
+            return json.loads(text)
+        except Exception:
+            return None
+
+    def get_technical_analysis_live(self, cmc_id) -> Optional[dict]:
+        """
+        Official CMC-computed technical analysis (EMA/SMA/MACD/RSI) for a
+        given CMC numeric id, via the Data MCP. Used as an independent live
+        cross-check against AlphaForge's own feature engineering — not as the
+        backtester's data source, since this is a point-in-time snapshot, not
+        a historical series.
+        """
+        if not cmc_id:
+            return None
+        return self._mcp_call("get_crypto_technical_analysis", {"id": str(cmc_id)})
+
+    def get_derivatives_snapshot_live(self) -> Optional[dict]:
+        """
+        Market-wide derivatives snapshot (funding rate, open interest, BTC
+        liquidations) via the Data MCP. This is aggregate/market-wide, not
+        per-asset, so it's used as a leverage/crowding context signal rather
+        than a per-asset funding_rate_zscore replacement.
+        """
+        return self._mcp_call("get_global_crypto_derivatives_metrics")
 
     def get_ohlcv_daily(self, symbol: str, count: int = 365) -> list[dict]:
         """

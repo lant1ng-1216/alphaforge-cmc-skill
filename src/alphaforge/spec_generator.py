@@ -104,6 +104,32 @@ def generate_strategy(user_input: str, cmc_api_key: str) -> dict:
     if isinstance(feat.get("macd"), dict):
         feat["macd_histogram"] = feat["macd"].get("histogram")
 
+    # Step 3b: Live cross-check against CMC's own official technical analysis
+    # and a market-wide derivatives/leverage snapshot, via the CMC Data MCP.
+    # This is supplementary — if the MCP call fails (e.g. blocked from a
+    # serverless IP, same class of issue as the Binance fallback), the core
+    # pipeline still runs unaffected on AlphaForge's own computed features.
+    live_cross_check = None
+    cmc_ta = cmc.get_technical_analysis_live(quote.get("cmc_id"))
+    cmc_derivatives = cmc.get_derivatives_snapshot_live()
+    if cmc_ta or cmc_derivatives:
+        live_cross_check = {}
+        if cmc_ta:
+            try:
+                live_cross_check["cmc_official_rsi14"] = float(cmc_ta["rsi"]["rsi14"])
+                live_cross_check["cmc_official_macd_histogram"] = float(cmc_ta["macd"]["histogram"])
+                live_cross_check["alphaforge_rsi14"] = feat.get("rsi_14")
+                live_cross_check["alphaforge_macd_histogram"] = feat.get("macd_histogram")
+            except (KeyError, TypeError, ValueError):
+                pass
+        if cmc_derivatives:
+            try:
+                live_cross_check["market_funding_rate"] = cmc_derivatives.get("fundingRate", {}).get("current")
+                live_cross_check["market_open_interest"] = cmc_derivatives.get("totalOpenInterest", {}).get("current")
+                live_cross_check["market_oi_change_24h"] = cmc_derivatives.get("totalOpenInterest", {}).get("percentage_change_24h")
+            except (KeyError, TypeError):
+                pass
+
     # Step 4: Classify market regime
     regime_result: RegimeResult = classify_regime(
         feat=feat,
@@ -172,6 +198,7 @@ def generate_strategy(user_input: str, cmc_api_key: str) -> dict:
         "spec": spec,
         "backtest": backtest_results,
         "walk_forward": walk_forward_results,
+        "live_cross_check": live_cross_check,
         "explanation": explanation,
         "failure_modes": failure_modes,
     }
@@ -271,6 +298,25 @@ def format_output(result: dict, verbose: bool = True) -> str:
     lines.append(f"  RSI14: {sig.get('rsi_14', 'N/A'):.1f}  |  MACD Hist: {sig.get('macd_histogram', 'N/A')}")
     lines.append(f"  Volume Z-score: {sig.get('volume_zscore', 'N/A')}")
     lines.append(f"  Realized Volatility: {sig.get('realized_volatility', 'N/A')}")
+
+    lcc = result.get("live_cross_check")
+    if lcc:
+        lines.append("\n## STEP 3b — Live Cross-Check (CMC Data MCP)")
+        if "cmc_official_rsi14" in lcc:
+            lines.append(
+                f"  RSI14 — AlphaForge: {lcc.get('alphaforge_rsi14')}  |  "
+                f"CMC official: {lcc['cmc_official_rsi14']}"
+            )
+            lines.append(
+                f"  MACD Hist — AlphaForge: {lcc.get('alphaforge_macd_histogram')}  |  "
+                f"CMC official: {lcc['cmc_official_macd_histogram']}"
+            )
+        if "market_funding_rate" in lcc:
+            lines.append(
+                f"  Market-wide funding rate: {lcc['market_funding_rate']}  |  "
+                f"Open interest: {lcc.get('market_open_interest')} "
+                f"({lcc.get('market_oi_change_24h')} 24h)"
+            )
 
     lines.append("\n## STEP 4 — Market Regime Detection")
     r = result["regime"]

@@ -63,11 +63,13 @@ def build_spec(
             "sentiment": ["fear_greed_score", "social_attention_zscore", "news_sentiment_score"],
             "derivatives": ["funding_rate_zscore", "open_interest_change", "long_short_crowding"],
             "data_note": (
-                "fear_greed_score is live (CMC classic REST API). The remaining sentiment/derivatives "
-                "fields are declared for spec completeness but not live in this deterministic pipeline: "
-                "verified via a live CMC Agent Hub MCP test, funding-rate and sentiment-regime data exist "
-                "but are only exposed through Agent Hub evidence-pack skills (e.g. monitor_market_sentiment_shift), "
-                "not the classic CMC REST API this pipeline calls. This is an architectural boundary, not a paywall."
+                "fear_greed_score is live (CMC classic REST API). Market-wide funding rate and open "
+                "interest are also live via the CMC Data MCP (see live_cross_check in the full result) — "
+                "but as market-wide aggregates, not per-asset values, which is why funding_rate_zscore, "
+                "open_interest_change, and long_short_crowding stay declared-only here: those need a "
+                "per-asset series this pipeline doesn't have a source for yet. social_attention_zscore and "
+                "news_sentiment_score are similarly declared-only — CMC's evidence-pack skills synthesize "
+                "sentiment narratively rather than exposing a raw per-asset score for those two fields."
             ),
         },
         "backtest": {

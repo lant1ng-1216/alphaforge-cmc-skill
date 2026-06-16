@@ -117,7 +117,7 @@ function renderMarket(r) {
 function renderFeatures(r) {
   const s = r.regime.signals;
   const fmt = v => (typeof v === "number" ? v.toFixed(4) : "N/A");
-  fill("sec-features", `
+  let html = `
     <div class="kv-list">
       <div><span class="k">ema_20</span><span class="v">${fmtPrice(s.ema_20)}</span></div>
       <div><span class="k">ema_50</span><span class="v">${fmtPrice(s.ema_50)}</span></div>
@@ -125,7 +125,22 @@ function renderFeatures(r) {
       <div><span class="k">macd_hist</span><span class="v">${fmtPrice(s.macd_histogram)}</span></div>
       <div><span class="k">volume_zscore</span><span class="v">${fmt(s.volume_zscore)}</span></div>
       <div><span class="k">realized_vol</span><span class="v">${fmt(s.realized_volatility)}</span></div>
-    </div>`);
+    </div>`;
+
+  const lcc = r.live_cross_check;
+  if (lcc && lcc.cmc_official_rsi14 !== undefined) {
+    html += `
+      <div class="divider"></div>
+      <div style="font-size:10.5px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px">Live Cross-Check (CMC Data MCP)</div>
+      <div class="kv-list">
+        <div><span class="k">rsi_14 (CMC official)</span><span class="v">${lcc.cmc_official_rsi14.toFixed(2)}</span></div>
+        <div><span class="k">macd_hist (CMC official)</span><span class="v">${lcc.cmc_official_macd_histogram.toFixed(4)}</span></div>
+        ${lcc.market_funding_rate !== undefined ? `<div><span class="k">market funding rate</span><span class="v">${lcc.market_funding_rate}</span></div>` : ""}
+        ${lcc.market_open_interest !== undefined ? `<div><span class="k">market open interest</span><span class="v">${lcc.market_open_interest}</span></div>` : ""}
+      </div>`;
+  }
+
+  fill("sec-features", html);
 }
 
 function renderRegime(r) {
