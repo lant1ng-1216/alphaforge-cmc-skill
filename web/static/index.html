@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AlphaForge — Quantopian-style Crypto Strategy Generation</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">AF</span>
+      <span class="brand-name">AlphaForge</span>
+    </div>
+    <div class="topbar-tag">Powered by CoinMarketCap &middot; BNB Hack Track 2</div>
+  </header>
+
+  <div class="input-bar">
+    <input id="intent-input" type="text" placeholder="e.g. Generate a BNB 4H swing strategy that follows momentum but avoids buying into overheated sentiment.">
+    <div class="examples">
+      <button class="example-btn" data-text="Generate a BNB 4H swing strategy that follows momentum but avoids buying into overheated sentiment.">BNB Momentum</button>
+      <button class="example-btn" data-text="Create a BTC panic reversal strategy for extreme fear conditions with conservative risk.">BTC Panic Reversal</button>
+      <button class="example-btn" data-text="Build an ETH volatility breakout strategy for low volatility accumulation phases.">ETH Breakout</button>
+    </div>
+    <span id="status-line" class="status-line"></span>
+    <button id="generate-btn" class="generate-btn">Run Strategy Generation</button>
+  </div>
+
+  <main class="dashboard">
+
+    <div class="columns">
+
+      <div class="col panel" data-col="intent-market">
+        <div class="panel-header"><span class="section-num">01</span>Intent &amp; Market Context</div>
+        <div class="panel-body">
+          <div class="section-body" id="sec-intent"><div class="empty">Awaiting input...</div></div>
+          <div class="divider"></div>
+          <div class="section-body" id="sec-market"><div class="empty">—</div></div>
+        </div>
+      </div>
+
+      <div class="col panel" data-col="features-regime">
+        <div class="panel-header"><span class="section-num">02</span>Features &amp; Regime</div>
+        <div class="panel-body">
+          <div class="section-body" id="sec-features"><div class="empty">—</div></div>
+          <div class="divider"></div>
+          <div class="section-body" id="sec-regime"><div class="empty">—</div></div>
+        </div>
+      </div>
+
+      <div class="col panel" data-col="spec">
+        <div class="panel-header"><span class="section-num">03</span>Strategy Spec (YAML)</div>
+        <div class="panel-body scrollable" id="sec-spec"><div class="empty">—</div></div>
+      </div>
+
+      <div class="col panel" data-col="chart">
+        <div class="panel-header"><span class="section-num">04</span>Regime &amp; Equity Curve</div>
+        <div class="panel-body chart-body" id="chart-body">
+          <div class="chart-placeholder">Run a strategy to render the chart.</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="metrics-bar" id="metrics-bar">
+      <div class="metric-tile" data-metric="total_return"><div class="metric-tile-label">Total Return</div><div class="metric-tile-value">—</div></div>
+      <div class="metric-tile" data-metric="bah_return"><div class="metric-tile-label">Buy &amp; Hold</div><div class="metric-tile-value">—</div></div>
+      <div class="metric-tile" data-metric="max_dd"><div class="metric-tile-label">Max Drawdown</div><div class="metric-tile-value">—</div></div>
+      <div class="metric-tile" data-metric="sharpe"><div class="metric-tile-label">Sharpe</div><div class="metric-tile-value">—</div></div>
+      <div class="metric-tile" data-metric="win_rate"><div class="metric-tile-label">Win Rate</div><div class="metric-tile-value">—</div></div>
+      <div class="metric-tile" data-metric="trades"><div class="metric-tile-label">Trades</div><div class="metric-tile-value">—</div></div>
+      <div class="metric-tile" data-metric="exposure"><div class="metric-tile-label">Exposure</div><div class="metric-tile-value">—</div></div>
+      <div class="metric-tile" data-metric="equity"><div class="metric-tile-label">Final Equity</div><div class="metric-tile-value">—</div></div>
+      <a id="download-link" class="download-btn disabled" download="alphaforge_spec.json">Export JSON</a>
+    </div>
+
+    <div class="details-bar panel">
+      <div class="details-tabs">
+        <button class="tab-btn active" data-tab="explanation">Explanation</button>
+        <button class="tab-btn" data-tab="failure">Failure Modes</button>
+      </div>
+      <div class="details-content" id="details-content">
+        <div class="empty">Run a strategy to see the explanation and failure modes.</div>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="footer">
+    Not financial advice — research-grade strategy specifications only, no trade execution or fund management.
+  </footer>
+
+</div>
+
+<div id="lightbox" class="lightbox hidden">
+  <div class="lightbox-toolbar">
+    <a id="lightbox-download" class="download-btn" download="alphaforge_chart.png">Download PNG</a>
+    <button id="lightbox-close" class="lightbox-close" aria-label="Close">&times;</button>
+  </div>
+  <div class="lightbox-stage">
+    <img id="lightbox-img" alt="AlphaForge chart (expanded)">
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

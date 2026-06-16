@@ -2,6 +2,8 @@
 AlphaForge main pipeline — orchestrates the full flow from intent to strategy spec + backtest.
 """
 import json
+import math
+from typing import Optional
 from .cmc_adapter import CMCAdapter
 from .intent_parser import parse_intent, StrategyIntent
 from .features import compute_features, latest_features
@@ -9,6 +11,54 @@ from .regime_classifier import classify_regime, RegimeResult
 from .strategy_templates import select_template, build_spec
 from .backtester import run_backtest
 from .spec_validator import validate_spec
+
+
+def _round_sig(v: float, sig: int = 6) -> float:
+    """
+    Round to `sig` significant figures rather than a fixed decimal place —
+    plain round(v, 4) collapses sub-cent memecoin prices (e.g. PEPE's
+    0.0000028 EMA) to 0.0, destroying the value entirely.
+    """
+    if v == 0 or not math.isfinite(v):
+        return v
+    digits = sig - int(math.floor(math.log10(abs(v)))) - 1
+    return round(v, max(digits, 0))
+
+
+def resolve_asset(cmc: CMCAdapter, intent: StrategyIntent) -> dict:
+    """
+    Try each candidate ticker (in order of likely relevance) against live CMC
+    data and use the first one that resolves. This lets AlphaForge handle any
+    CMC-listed asset instead of silently defaulting to BNB when the text
+    mentions a token outside a hardcoded shortlist.
+    """
+    candidates = intent.asset_candidates or [intent.asset]
+
+    # Filter against the live CMC symbol list first so we don't burn a
+    # get_quote call (and risk rate limits) on every noise word extracted
+    # from the sentence — only call get_quote for symbols CMC actually lists.
+    try:
+        valid_symbols = cmc.get_symbol_set()
+        filtered = [c for c in candidates if c in valid_symbols]
+    except Exception:
+        filtered = candidates  # symbol map unavailable; fall back to trying candidates directly
+
+    to_try = filtered or candidates
+    last_error: Optional[Exception] = None
+    for candidate in to_try:
+        try:
+            quote = cmc.get_quote(candidate)
+            intent.asset = candidate
+            return quote
+        except Exception as exc:
+            last_error = exc
+            continue
+
+    tried = ", ".join(candidates)
+    raise ValueError(
+        f"Could not find a tradable asset on CoinMarketCap. Tried: {tried}. "
+        f"Mention a valid ticker (e.g. BTC, ETH, SOL, SUI)."
+    ) from last_error
 
 
 def generate_strategy(user_input: str, cmc_api_key: str) -> dict:
@@ -27,9 +77,10 @@ def generate_strategy(user_input: str, cmc_api_key: str) -> dict:
     # Step 1: Parse intent
     intent = parse_intent(user_input)
 
-    # Step 2: Pull CMC market context
+    # Step 2: Resolve the asset against live CMC data (works for any
+    # CMC-listed token, not just a hardcoded shortlist) and pull market context
+    quote = resolve_asset(cmc, intent)
     fg = cmc.get_fear_and_greed()
-    quote = cmc.get_quote(intent.asset)
     ohlcv = cmc.get_ohlcv_daily(intent.asset, count=365)
     global_metrics = cmc.get_global_metrics()
 
@@ -104,7 +155,7 @@ def generate_strategy(user_input: str, cmc_api_key: str) -> dict:
             "secondary": regime_result.secondary,
             "confidence": regime_result.confidence,
             "explanation": regime_result.explanation,
-            "signals": {k: (round(v, 4) if isinstance(v, float) else v)
+            "signals": {k: (_round_sig(v) if isinstance(v, float) else v)
                         for k, v in regime_result.signals.items() if v is not None},
         },
         "spec": spec,
@@ -126,6 +177,24 @@ def _build_explanation(intent: StrategyIntent, regime: RegimeResult, template: s
         f"Sharpe {bt['sharpe_ratio']:.2f}, max drawdown {bt['max_drawdown_pct']:.1f}%, "
         f"win rate {bt['win_rate_pct']:.1f}%."
     )
+
+
+def _fmt_price(v) -> str:
+    """
+    Adaptive-precision price formatting. Fixed 4-decimal formatting reads as
+    "$0.0000" for sub-cent memecoins (PEPE, SHIB, BONK...) even though the
+    real price is e.g. $0.0000089 — show enough decimals to keep significant
+    figures instead of always truncating to 4 places.
+    """
+    if v is None:
+        return "N/A"
+    v = float(v)
+    if v == 0:
+        return "0.0000"
+    if abs(v) >= 1:
+        return f"{v:,.4f}"
+    decimals = max(4, -math.floor(math.log10(abs(v))) + 3)
+    return f"{v:.{decimals}f}"
 
 
 def _build_failure_modes(template: str, regime: RegimeResult) -> list[str]:
@@ -178,7 +247,7 @@ def format_output(result: dict, verbose: bool = True) -> str:
 
     lines.append("\n## STEP 2 — Live CMC Market Context")
     mc = result["market_context"]
-    lines.append(f"  Asset: {mc['asset']} @ ${mc['price']:,.4f}")
+    lines.append(f"  Asset: {mc['asset']} @ ${_fmt_price(mc['price'])}")
     lines.append(f"  24h change: {mc['price_change_24h']:+.2f}%  |  7d: {mc['price_change_7d']:+.2f}%")
     lines.append(f"  Fear & Greed: {mc['fear_greed_score']} — {mc['fear_greed_label']}")
     lines.append(f"  BTC Dominance: {mc['btc_dominance']:.1f}%")
@@ -186,7 +255,7 @@ def format_output(result: dict, verbose: bool = True) -> str:
 
     lines.append("\n## STEP 3 — Feature Engineering")
     sig = result["regime"]["signals"]
-    lines.append(f"  EMA20: {sig.get('ema_20', 'N/A'):.4f}  |  EMA50: {sig.get('ema_50', 'N/A'):.4f}")
+    lines.append(f"  EMA20: {_fmt_price(sig.get('ema_20'))}  |  EMA50: {_fmt_price(sig.get('ema_50'))}")
     lines.append(f"  RSI14: {sig.get('rsi_14', 'N/A'):.1f}  |  MACD Hist: {sig.get('macd_histogram', 'N/A')}")
     lines.append(f"  Volume Z-score: {sig.get('volume_zscore', 'N/A')}")
     lines.append(f"  Realized Volatility: {sig.get('realized_volatility', 'N/A')}")

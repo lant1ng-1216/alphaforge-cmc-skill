@@ -38,6 +38,13 @@ CONSTRAINT_KEYWORDS = {
     "extreme fear": "panic_reversal",
     "volatile": "high_volatility_filter",
     "low volatility": "low_volatility_accumulation",
+    "volatility spike": "reduce_exposure_on_volatility",
+    "spike in volatility": "reduce_exposure_on_volatility",
+    "cuts exposure": "reduce_exposure_on_volatility",
+    "cut exposure": "reduce_exposure_on_volatility",
+    "reduce exposure": "reduce_exposure_on_volatility",
+    "reduces exposure": "reduce_exposure_on_volatility",
+    "cuts risk": "reduce_exposure_on_volatility",
 }
 
 RISK_MAP = {
@@ -51,8 +58,40 @@ RISK_MAP = {
 COMMON_SYMBOLS = {
     "bnb": "BNB", "btc": "BTC", "bitcoin": "BTC",
     "eth": "ETH", "ethereum": "ETH", "sol": "SOL", "solana": "SOL",
-    "xrp": "XRP", "ada": "ADA", "doge": "DOGE", "avax": "AVAX",
+    "xrp": "XRP", "ripple": "XRP", "ada": "ADA", "cardano": "ADA",
+    "doge": "DOGE", "dogecoin": "DOGE", "avax": "AVAX", "avalanche": "AVAX",
+    "sui": "SUI", "ltc": "LTC", "litecoin": "LTC", "dot": "DOT",
+    "polkadot": "DOT", "link": "LINK", "chainlink": "LINK",
+    "trx": "TRX", "tron": "TRX", "ton": "TON", "shib": "SHIB",
+    "pepe": "PEPE", "near": "NEAR", "apt": "APT", "aptos": "APT",
+    "arb": "ARB", "arbitrum": "ARB", "op": "OP", "optimism": "OP",
+    "uni": "UNI", "uniswap": "UNI", "atom": "ATOM", "cosmos": "ATOM",
+    "fil": "FIL", "filecoin": "FIL", "icp": "ICP", "inj": "INJ",
+    "injective": "INJ", "tia": "TIA", "celestia": "TIA",
 }
+
+# Words that look like 2-6 letter tickers but are common English/strategy
+# vocabulary, not assets — excluded when extracting a candidate symbol from
+# free text. CMC validation (see spec_generator.resolve_asset) is the real
+# safety net; this just keeps obvious noise out of the candidate list.
+_TICKER_STOPWORDS = {
+    "a", "an", "the", "that", "this", "but", "and", "or", "for", "with",
+    "into", "avoid", "avoids", "avoiding", "swing", "trend", "daily",
+    "weekly", "hourly", "scalp", "short", "long", "entry", "exit",
+    "value", "price", "prices", "close", "above", "below", "under",
+    "over", "high", "highs", "low", "lows", "risk", "cuts", "cut", "spike",
+    "spikes", "quickly", "style", "build", "create", "make", "please",
+    "using", "based", "target", "targets", "follow", "follows",
+    "is", "are", "of", "on", "in", "to", "at", "it", "be", "do", "if",
+    "by", "rsi", "macd", "atr", "ema", "usd", "usdt", "controls",
+    "control", "during", "while", "when", "from", "strong", "weak",
+    "buying", "selling", "buy", "sell", "holds", "hold", "cash",
+    "up", "down", "not", "coin", "coins", "token", "tokens", "crypto",
+    "asset", "assets", "market", "markets", "trade", "trades", "trading",
+    "made", "does", "exist", "some", "any", "all", "no", "yes", "can",
+}
+
+_TICKER_PATTERN = re.compile(r"\b[A-Za-z]{2,6}\b")
 
 
 @dataclass
@@ -63,6 +102,7 @@ class StrategyIntent:
     constraints: list[str] = field(default_factory=list)
     risk_profile: str = "moderate"
     raw_input: str = ""
+    asset_candidates: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -74,15 +114,41 @@ class StrategyIntent:
         }
 
 
+def extract_asset_candidates(raw_input: str) -> list[str]:
+    """
+    Best-effort, ordered list of plausible ticker symbols mentioned in free text.
+    Not validated against CMC here — callers (see spec_generator.resolve_asset)
+    should confirm the symbol actually exists before trusting it, so any
+    CMC-listed asset works, not just the ones in COMMON_SYMBOLS.
+    """
+    text_lower = raw_input.lower()
+    candidates: list[str] = []
+
+    # Friendly full-name matches first (e.g. "bitcoin" -> BTC)
+    for kw, sym in COMMON_SYMBOLS.items():
+        if len(kw) > 3 and kw in text_lower and sym not in candidates:
+            candidates.append(sym)
+
+    # Generic short-token extraction, in order of appearance in the sentence
+    for match in _TICKER_PATTERN.finditer(raw_input):
+        token = match.group(0)
+        if token.lower() in _TICKER_STOPWORDS:
+            continue
+        sym = token.upper()
+        if sym not in candidates:
+            candidates.append(sym)
+
+    return candidates
+
+
 def parse_intent(user_input: str) -> StrategyIntent:
     text = user_input.lower()
     intent = StrategyIntent(raw_input=user_input)
 
-    # Asset detection
-    for kw, sym in COMMON_SYMBOLS.items():
-        if kw in text:
-            intent.asset = sym
-            break
+    # Asset detection — keep a best-effort default; the real symbol is
+    # confirmed against live CMC data in spec_generator.resolve_asset.
+    intent.asset_candidates = extract_asset_candidates(user_input)
+    intent.asset = intent.asset_candidates[0] if intent.asset_candidates else "BNB"
 
     # Timeframe detection
     for kw, tf in TIMEFRAME_MAP.items():

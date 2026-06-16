@@ -10,6 +10,11 @@ from typing import Optional
 
 CMC_BASE = "https://pro-api.coinmarketcap.com"
 
+# Module-level cache for the full symbol list — it rarely changes and is
+# expensive to refetch, so we share it across CMCAdapter instances/requests.
+_SYMBOL_SET_CACHE: dict = {"symbols": None, "ts": 0.0}
+_SYMBOL_SET_TTL = 6 * 3600  # 6 hours
+
 
 class CMCAdapter:
     def __init__(self, api_key: str):
@@ -43,6 +48,22 @@ class CMCAdapter:
             "label": fg["value_classification"],
             "updated": fg["update_time"],
         }
+
+    def get_symbol_set(self) -> set:
+        """
+        All active CMC ticker symbols (uppercase), used to validate a
+        natural-language asset guess before spending a get_quote call on it.
+        Cached for _SYMBOL_SET_TTL since the listing changes infrequently.
+        """
+        now = time.time()
+        cached = _SYMBOL_SET_CACHE["symbols"]
+        if cached is not None and now - _SYMBOL_SET_CACHE["ts"] < _SYMBOL_SET_TTL:
+            return cached
+        data = self._get("/v1/cryptocurrency/map", {"listing_status": "active", "limit": 5000})
+        symbols = {item["symbol"].upper() for item in data.get("data", [])}
+        _SYMBOL_SET_CACHE["symbols"] = symbols
+        _SYMBOL_SET_CACHE["ts"] = now
+        return symbols
 
     def get_quote(self, symbol: str) -> dict:
         """Latest price quote for a symbol."""

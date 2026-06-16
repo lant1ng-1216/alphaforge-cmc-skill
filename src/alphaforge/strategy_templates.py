@@ -187,5 +187,16 @@ def build_spec(
             "filters": {"note": "Wait for regime to resolve before entering positions"},
         })
 
+    if "reduce_exposure_on_volatility" in intent.constraints:
+        filters = base.setdefault("filters", {})
+        filters["volatility_guard"] = {
+            "reduce_position_if_realized_volatility_above": 0.9,
+            "exit_if_realized_volatility_spike_pct": 50,
+        }
+        exit_rules = base.get("exit_rules")
+        if isinstance(exit_rules, dict) and "any" in exit_rules:
+            exit_rules["any"].append("realized_volatility > realized_volatility_baseline * 1.5")
+        risk["max_position_size_pct"] = round(risk["max_position_size_pct"] * 0.8)
+
     base["risk_management"] = risk
     return base
