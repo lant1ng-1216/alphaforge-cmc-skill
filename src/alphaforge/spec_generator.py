@@ -9,7 +9,7 @@ from .intent_parser import parse_intent, StrategyIntent
 from .features import compute_features, latest_features
 from .regime_classifier import classify_regime, RegimeResult
 from .strategy_templates import select_template, build_spec
-from .backtester import run_backtest
+from .backtester import run_backtest, run_walk_forward_backtest
 from .spec_validator import validate_spec
 
 
@@ -137,6 +137,17 @@ def generate_strategy(user_input: str, cmc_api_key: str) -> dict:
         slippage_bps=spec["backtest"]["slippage_bps"],
     )
 
+    # Step 8b: Walk-forward consistency check — same fixed rules, independent
+    # historical periods. Checks the edge isn't an artifact of one window.
+    walk_forward_results = run_walk_forward_backtest(
+        ohlcv=ohlcv,
+        spec=spec,
+        initial_capital=spec["backtest"]["initial_capital"],
+        transaction_cost_bps=spec["backtest"]["transaction_cost_bps"],
+        slippage_bps=spec["backtest"]["slippage_bps"],
+        n_periods=2,
+    )
+
     # Step 9: Build explanation + failure modes
     explanation = _build_explanation(intent, regime_result, template_name, backtest_results)
     failure_modes = _build_failure_modes(template_name, regime_result)
@@ -160,6 +171,7 @@ def generate_strategy(user_input: str, cmc_api_key: str) -> dict:
         },
         "spec": spec,
         "backtest": backtest_results,
+        "walk_forward": walk_forward_results,
         "explanation": explanation,
         "failure_modes": failure_modes,
     }
@@ -293,6 +305,18 @@ def format_output(result: dict, verbose: bool = True) -> str:
     lines.append(f"  Number of Trades:   {bt['number_of_trades']}")
     lines.append(f"  Exposure Time:      {bt['exposure_time_pct']:.1f}%")
     lines.append(f"  Final Equity:       ${bt['final_equity']:,.2f}")
+
+    wf = result.get("walk_forward") or []
+    if wf:
+        lines.append("\n## STEP 6b — Walk-Forward Consistency Check")
+        lines.append("  Same fixed rules, independent historical periods (no re-fitting):")
+        for p in wf:
+            label = p["period_label"].replace("_", " ").title()
+            lines.append(
+                f"    {label} ({p['period_bars']} bars): "
+                f"return {p['total_return_pct']:+.2f}% vs B&H {p['buy_and_hold_return_pct']:+.2f}%, "
+                f"Sharpe {p['sharpe_ratio']:.2f}, max DD {p['max_drawdown_pct']:.1f}%, trades {p['number_of_trades']}"
+            )
 
     lines.append("\n## STEP 7 — Strategy Explanation")
     lines.append(result["explanation"])

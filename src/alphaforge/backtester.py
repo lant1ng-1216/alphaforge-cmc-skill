@@ -232,3 +232,42 @@ def run_backtest(
         "final_equity": round(equity, 2),
         "equity_curve": [round(v, 2) for v in equity_curve[::5]],  # downsample for output
     }
+
+
+def run_walk_forward_backtest(
+    ohlcv: list[dict],
+    spec: dict,
+    initial_capital: float = 10_000,
+    transaction_cost_bps: float = 10,
+    slippage_bps: float = 5,
+    n_periods: int = 2,
+) -> list[dict]:
+    """
+    Split the historical window into N contiguous, non-overlapping periods and
+    backtest each independently with the same fixed rule set (no re-fitting).
+    This checks whether the strategy's edge holds across different stretches of
+    history rather than being an artifact of one cherry-picked window — AlphaForge's
+    rules are fixed thresholds rather than data-fitted parameters, so this is a
+    consistency check, not a parameter-search validation.
+    """
+    n = len(ohlcv)
+    min_period_bars = 80  # comfortably more than the 50-bar warm-up
+    if n < min_period_bars * n_periods:
+        return []
+
+    chunk = n // n_periods
+    results = []
+    for i in range(n_periods):
+        start = i * chunk
+        end = n if i == n_periods - 1 else (i + 1) * chunk
+        segment = ohlcv[start:end]
+        if len(segment) < min_period_bars:
+            continue
+        bt = run_backtest(segment, spec, initial_capital, transaction_cost_bps, slippage_bps)
+        bt.pop("equity_curve", None)
+        bt["period_label"] = f"period_{i + 1}_of_{n_periods}"
+        bt["period_bars"] = len(segment)
+        bt["period_start_time"] = segment[0].get("time")
+        bt["period_end_time"] = segment[-1].get("time")
+        results.append(bt)
+    return results

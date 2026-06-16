@@ -218,6 +218,21 @@ function renderDetailsTab(tab) {
   }
   if (tab === "failure") {
     content.innerHTML = `<ul class="failure-list">${lastResult.failure_modes.map(f => `<li>${esc(f)}</li>`).join("")}</ul>`;
+  } else if (tab === "walkforward") {
+    const wf = lastResult.walk_forward || [];
+    if (!wf.length) {
+      content.innerHTML = `<div class="empty">Not enough historical data to split into independent periods for this run.</div>`;
+    } else {
+      content.innerHTML = `
+        <p style="margin-bottom:10px">Same fixed rules, independent historical periods, no re-fitting — checks the edge isn't an artifact of one window.</p>
+        <div class="kv-list" style="font-family:var(--mono);font-size:12px">
+          ${wf.map(p => `
+            <div style="display:flex;justify-content:space-between;gap:14px;padding:4px 0;border-bottom:1px solid var(--border)">
+              <span class="k">${esc(p.period_label.replace(/_/g, " "))} (${p.period_bars} bars)</span>
+              <span class="v">${p.total_return_pct >= 0 ? "+" : ""}${p.total_return_pct.toFixed(2)}% vs B&H ${p.buy_and_hold_return_pct >= 0 ? "+" : ""}${p.buy_and_hold_return_pct.toFixed(2)}% &nbsp;|&nbsp; Sharpe ${p.sharpe_ratio.toFixed(2)} &nbsp;|&nbsp; trades ${p.number_of_trades}</span>
+            </div>`).join("")}
+        </div>`;
+    }
   } else {
     content.innerHTML = `<p>${esc(lastResult.explanation).replace(/\n\n/g, "</p><p>")}</p>`;
   }

@@ -312,7 +312,7 @@ pre.code-block {
 .download-btn.disabled { opacity: 0.4; pointer-events: none; }
 
 /* ── Details bar ── */
-.details-bar { flex: 0 0 auto; flex-direction: row; max-height: 110px; }
+.details-bar { flex: 0 0 auto; flex-direction: row; max-height: 130px; }
 .details-tabs {
   flex: 0 0 130px;
   display: flex;

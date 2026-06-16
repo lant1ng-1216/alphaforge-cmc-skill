@@ -2,7 +2,7 @@
 import sys, os, math
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from alphaforge.backtester import run_backtest
+from alphaforge.backtester import run_backtest, run_walk_forward_backtest
 
 
 def make_trending_ohlcv(n=200, start=100.0, drift=0.003):
@@ -104,6 +104,22 @@ def test_win_rate_range():
     assert 0 <= result["win_rate_pct"] <= 100
 
 
+def test_walk_forward_splits_into_requested_periods():
+    ohlcv = make_trending_ohlcv(n=400)
+    results = run_walk_forward_backtest(ohlcv, _base_spec(), n_periods=2)
+    assert len(results) == 2
+    for p in results:
+        assert "period_label" in p
+        assert "equity_curve" not in p  # stripped to keep the payload small
+        assert p["period_bars"] > 0
+
+
+def test_walk_forward_too_short_returns_empty():
+    ohlcv = make_trending_ohlcv(n=100)  # below the 2x min_period_bars floor
+    results = run_walk_forward_backtest(ohlcv, _base_spec(), n_periods=2)
+    assert results == []
+
+
 if __name__ == "__main__":
     test_backtest_returns_required_keys()
     test_final_equity_positive()
@@ -111,4 +127,6 @@ if __name__ == "__main__":
     test_trending_market_buy_and_hold_positive()
     test_exposure_time_range()
     test_win_rate_range()
+    test_walk_forward_splits_into_requested_periods()
+    test_walk_forward_too_short_returns_empty()
     print("All backtester tests passed.")
