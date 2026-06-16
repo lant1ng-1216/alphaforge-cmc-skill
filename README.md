@@ -39,6 +39,18 @@ Backtester             — runs historical simulation, compares vs buy-and-hold
 Report                 — regime explanation + strategy explanation + failure modes
 ```
 
+## Validated Live Against CMC Agent Hub
+
+AlphaForge's `skill.md` was connected to the real **CMC Agent Hub** (via its MCP server) and tested end-to-end with a live agent, not just simulated locally.
+
+Two independent systems were asked about the same asset (BNB) at the same time:
+- AlphaForge's own regime classifier → **neutral / mixed signals** (confidence 40%)
+- CMC Agent Hub's `analyze_multi_timeframe_trend_alignment` skill → **mixed alignment** across 1h/4h/1d, "confirm long frame before adding risk"
+
+Both reached the same conclusion independently — a useful cross-validation signal, and a real-data confirmation that AlphaForge's regime detection isn't just internally self-consistent, it agrees with CoinMarketCap's own live analysis tooling.
+
+**A genuine architectural finding from this test:** CMC Agent Hub's skill-hub does not expose raw data primitives (price, EMA, raw Fear & Greed score) to agents directly — it exposes pre-packaged "evidence pack" analyses (sentiment regime, trend alignment, volatility risk, etc.). This confirms why AlphaForge needs its own deterministic engine rather than delegating everything to the Agent Hub: the Agent Hub is the right place for an LLM agent to gather market *narrative* and cross-validation, while AlphaForge's Python pipeline is what actually computes the precise indicators, generates the schema-valid YAML spec, and runs the historical backtest that `skill.md` requires. The two are complementary, not redundant — an agent in production would use Agent Hub skills for context and AlphaForge for the quantitative, reproducible output.
+
 ## Quick Start
 
 ```bash

@@ -46,6 +46,14 @@ You do **not** promise profit.
 - **CoinMarketCap Agent Hub**: Fear & Greed index, price quotes, global market metrics, sentiment data
 - **Binance public API**: Historical daily OHLCV (365 days, no key required)
 
+Note: when running inside an LLM agent connected to CMC Agent Hub's MCP server, the
+hub exposes pre-packaged evidence-pack skills (e.g. trend alignment, sentiment shift,
+volatility risk) rather than raw data primitives. Use those skills to gather live market
+context and cross-validate the detected regime, but rely on AlphaForge's own deterministic
+pipeline (or an equivalent raw-data source) for the precise indicator values, the
+schema-valid YAML spec, and the historical backtest — these require raw OHLCV and exact
+numeric features that evidence-pack skills do not return directly.
+
 ---
 
 ## Output format rules
