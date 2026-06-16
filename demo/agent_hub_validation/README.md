@@ -43,7 +43,7 @@ action_guidance.primary_action: "confirm_long_frame_before_adding_risk"
 setup rather than a clean trend, at the same point in time. This is real cross-validation, not
 internal consistency within one codebase.
 
-## Step 3 — A genuine architectural finding
+## Step 3 — Two distinct MCP layers in CMC's stack
 
 A second live call, `monitor_market_sentiment_shift`, returned real sentiment data:
 
@@ -54,28 +54,42 @@ fear_greed_7d_delta: -22.0
 average_funding_bps_7d: 18.15
 ```
 
-This confirmed something important: **CMC Agent Hub's skill-hub does not expose raw data
-primitives** (a plain price, a plain Fear & Greed number, a plain funding rate) to agents.
-It exposes pre-packaged "evidence pack" analyses. AlphaForge's `fear_greed_score` is real,
-live data pulled from CMC's classic REST API — but the richer derivatives/sentiment fields
-declared in the spec (`funding_rate_zscore`, `open_interest_change`, `long_short_crowding`)
-are only available, in CMC's current data architecture, through Agent Hub evidence-pack
-skills — not a paywalled REST endpoint, as originally assumed.
+CMC's AI Integrations stack has two relevant MCP layers. The **Skills Marketplace**
+(`cmc-skill-hub`, used above) exposes pre-packaged "evidence pack" analyses — sentiment
+regime, trend alignment, volatility risk — useful for an LLM agent to gather market
+narrative and cross-validation. A separate **Data MCP** (`https://mcp.coinmarketcap.com/mcp`,
+12 tools) exposes raw quotes, official technical analysis, and global derivatives data
+directly.
 
-This is exactly why AlphaForge ships its own deterministic pipeline rather than delegating
-everything to the Agent Hub: the Agent Hub is where an LLM agent gathers market narrative
-and cross-validation; AlphaForge is what computes the precise indicators, the schema-valid
-YAML spec, and the historical backtest that `skill.md` requires. The two layers are
-complementary, not redundant — and that division of labor was discovered by actually testing
-the integration, not assumed up front.
+## Step 4 — Cross-checking AlphaForge's own math against CMC's Data MCP
+
+AlphaForge calls the Data MCP live — a plain JSON-RPC-over-HTTP POST, no SDK or session
+handshake required — and compares its own computed RSI14/MACD against CMC's official
+calculation for the same asset:
+
+```
+RSI14  — AlphaForge: 47.93   |  CMC official: 47.97
+MACD   — AlphaForge: 0.5172  |  CMC official: 0.5533
+```
+
+Independent confirmation that AlphaForge's hand-written feature engineering matches
+CoinMarketCap's own numbers, not just internal consistency. The Data MCP's derivatives
+metrics (`get_global_crypto_derivatives_metrics`) are market-wide aggregates rather than
+per-asset, which is why `funding_rate_zscore` and similar per-asset fields stay
+declared-only in the generated spec — see `data_note` in the YAML output.
+
+AlphaForge still runs its own deterministic pipeline for the historical backtest itself,
+since both MCP layers return point-in-time snapshots rather than the historical series a
+backtest needs.
 
 ## Verification checklist (per CMC's own MCP setup doc)
 
 | Check | Result |
 |---|---|
 | Platform | Claude Code (local agent) |
-| Transport | Native Streamable HTTP |
+| Transport | Native Streamable HTTP (Skills Marketplace) / plain HTTP POST (Data MCP) |
 | `find_skill(query="btc price")` | ✅ Success |
 | `execute_skill(btc_cross_asset_correlation, {"preview": true})` | ✅ Completed in 26.18s, no client-side timeout |
+| `get_crypto_technical_analysis` / `get_global_crypto_derivatives_metrics` (Data MCP) | ✅ Live in production (see `live_cross_check` in the API response) |
 | Tool timeout configured | 300s (`MCP_TOOL_TIMEOUT=300000`) |
 | API key location | User-level config only, never committed to a repo |
