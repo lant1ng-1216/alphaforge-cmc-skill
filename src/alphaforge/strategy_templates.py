@@ -62,7 +62,13 @@ def build_spec(
             "technical": ["ema_20", "ema_50", "rsi_14", "macd_histogram", "volume_zscore", "atr_14"],
             "sentiment": ["fear_greed_score", "social_attention_zscore", "news_sentiment_score"],
             "derivatives": ["funding_rate_zscore", "open_interest_change", "long_short_crowding"],
-            "data_note": "sentiment/derivatives features declared for spec completeness; live feed requires CMC Pro plan",
+            "data_note": (
+                "fear_greed_score is live (CMC classic REST API). The remaining sentiment/derivatives "
+                "fields are declared for spec completeness but not live in this deterministic pipeline: "
+                "verified via a live CMC Agent Hub MCP test, funding-rate and sentiment-regime data exist "
+                "but are only exposed through Agent Hub evidence-pack skills (e.g. monitor_market_sentiment_shift), "
+                "not the classic CMC REST API this pipeline calls. This is an architectural boundary, not a paywall."
+            ),
         },
         "backtest": {
             "start_date": "2025-06-01",
