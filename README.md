@@ -51,7 +51,14 @@ Both reached the same conclusion independently — a useful cross-validation sig
 
 Full transcript and verification checklist: [`demo/agent_hub_validation/README.md`](demo/agent_hub_validation/README.md)
 
-**A genuine architectural finding from this test:** CMC Agent Hub's skill-hub does not expose raw data primitives (price, EMA, raw Fear & Greed score) to agents directly — it exposes pre-packaged "evidence pack" analyses (sentiment regime, trend alignment, volatility risk, etc.). This confirms why AlphaForge needs its own deterministic engine rather than delegating everything to the Agent Hub: the Agent Hub is the right place for an LLM agent to gather market *narrative* and cross-validation, while AlphaForge's Python pipeline is what actually computes the precise indicators, generates the schema-valid YAML spec, and runs the historical backtest that `skill.md` requires. The two are complementary, not redundant — an agent in production would use Agent Hub skills for context and AlphaForge for the quantitative, reproducible output.
+**An architectural finding from this test, since corrected:** CMC's AI Integrations stack actually has two distinct MCP layers. The **Skills Marketplace** (`cmc-skill-hub`, tested above) exposes pre-packaged "evidence pack" analyses (sentiment regime, trend alignment, volatility risk) rather than raw numbers — that part of the finding held up. But CMC also ships a separate **Data MCP** (`https://mcp.coinmarketcap.com/mcp`, 12 tools) that *does* expose raw quotes, official technical analysis, and global derivatives data directly. AlphaForge now calls this Data MCP live (plain JSON-RPC over HTTP — no SDK or session handshake needed) and cross-checks its own computed RSI14/MACD against CMC's official calculation:
+
+```
+RSI14  — AlphaForge: 47.93   |  CMC official: 47.97
+MACD   — AlphaForge: 0.5172  |  CMC official: 0.5533
+```
+
+Independent confirmation that AlphaForge's hand-written feature engineering matches CoinMarketCap's own numbers — not just internal consistency. The Data MCP's derivatives metrics are market-wide aggregates rather than per-asset, which is why `funding_rate_zscore` and similar per-asset fields stay declared-only in the spec (see `data_note` in the generated YAML) — that boundary is real, just narrower than originally claimed.
 
 ## Quick Start
 
