@@ -43,14 +43,10 @@ body {
 }
 .brand { display: flex; align-items: center; gap: 9px; }
 .brand-mark {
-  width: 24px; height: 24px;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  color: #06070a;
-  font-weight: 800;
-  font-size: 11px;
-  display: flex; align-items: center; justify-content: center;
-  letter-spacing: -0.5px;
+  width: 26px;
+  height: auto;
+  object-fit: contain;
+  display: block;
 }
 .brand-name { font-weight: 700; font-size: 14px; letter-spacing: -0.2px; }
 .topbar-tag { font-size: 10.5px; color: var(--text-dim); font-family: var(--mono); }
