@@ -7,3 +7,4 @@ demo/*.png
 web/static/charts/*.png
 .venv/
 venv/
+.vercel
