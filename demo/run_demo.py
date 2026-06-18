@@ -18,9 +18,151 @@ import threading
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+# ── .env loader ────────────────────────────────────────────────────────────────
+_ENV_PATH = os.path.join(os.path.dirname(__file__), "..", ".env")
+
+def _load_dotenv(path: str) -> None:
+    """Load KEY=VALUE pairs from .env into os.environ (no third-party deps).
+    Overwrites env vars that are set but empty (e.g. CMC_API_KEY="")."""
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, val = line.partition("=")
+                key = key.strip()
+                val = val.strip().strip('"').strip("'")
+                # Set if missing OR explicitly empty in the environment
+                if key and (key not in os.environ or not os.environ[key]):
+                    os.environ[key] = val
+    except FileNotFoundError:
+        pass
+
+_load_dotenv(_ENV_PATH)
+
+# ── Key setup wizard ───────────────────────────────────────────────────────────
+def _save_to_dotenv(key: str, value: str) -> None:
+    """Append or update a KEY=VALUE line in the project .env file."""
+    lines = []
+    try:
+        with open(_ENV_PATH) as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        pass
+
+    updated = False
+    for i, line in enumerate(lines):
+        if line.startswith(f"{key}=") or line.startswith(f"{key} ="):
+            lines[i] = f"{key}={value}\n"
+            updated = True
+            break
+    if not updated:
+        lines.append(f"{key}={value}\n")
+
+    with open(_ENV_PATH, "w") as f:
+        f.writelines(lines)
+
+
+def _wizard_cmc() -> str:
+    """
+    Interactive first-run wizard for CMC_API_KEY.
+    Returns the key (also sets os.environ and writes .env).
+    """
+    # Try rich for prettier output, fall back to plain print
+    try:
+        from rich.console import Console as _C
+        from rich.panel import Panel as _P
+        from rich.rule import Rule as _R
+        _con = _C()
+        def _print(msg="", **kw): _con.print(msg, **kw)
+        def _input(prompt): return _con.input(prompt)
+        def _rule(t): _con.print(_R(f"[bold blue]{t}[/bold blue]", style="blue"))
+        def _panel(body, title=""): _con.print(_P(body, title=f"[bold blue]{title}[/bold blue]", border_style="blue", padding=(1, 4)))
+        _rich = True
+    except ImportError:
+        def _print(msg="", **kw): print(msg)
+        def _input(prompt): return input(prompt)
+        def _rule(t): print(f"\n{'─'*60}\n  {t}\n{'─'*60}")
+        def _panel(body, title=""): print(f"\n{title}\n{body}\n")
+        _rich = False
+
+    _rule("Welcome to AlphaForge — First Run Setup")
+    _print()
+    _panel(
+        "[bold white]AlphaForge needs a CoinMarketCap API key[/bold white]\n"
+        "to fetch live price data, Fear & Greed index, and OHLCV history.\n\n"
+        "[cyan]Get your free key (Basic plan is enough):[/cyan]\n"
+        "[bold]→  https://coinmarketcap.com/api/[/bold]",
+        title="CMC API Key Required"
+    ) if _rich else _panel(
+        "AlphaForge needs a CoinMarketCap API key.\n"
+        "Get your free key at: https://coinmarketcap.com/api/",
+        title="CMC API Key Required"
+    )
+    _print()
+
+    if _rich:
+        from rich.table import Table
+        from rich import box as _box
+        t = Table(box=_box.SIMPLE, show_header=False, padding=(0, 2))
+        t.add_column(style="bold cyan", width=5)
+        t.add_column()
+        t.add_row("[1]", "Paste my key now  [dim](saved to .env, loaded automatically next time)[/dim]")
+        t.add_row("[2]", "Show me the export command  [dim](I'll set it manually)[/dim]")
+        t.add_row("[Q]", "[dim]Quit[/dim]")
+        _con.print(t)
+    else:
+        print("  [1]  Paste my key now (saved to .env)")
+        print("  [2]  Show me the export command")
+        print("  [Q]  Quit")
+
+    _print()
+    choice = _input("  [bold cyan]>[/bold cyan] " if _rich else "  > ").strip().upper()
+
+    if choice == "Q":
+        _print("\n[dim]Goodbye.[/dim]") if _rich else print("\nGoodbye.")
+        sys.exit(0)
+
+    if choice == "2":
+        _print()
+        _panel(
+            "[bold]Run this command, then restart AlphaForge:[/bold]\n\n"
+            "  [bold yellow]export CMC_API_KEY=your_key_here[/bold yellow]\n\n"
+            "To make it permanent, add the line above to [cyan]~/.zshrc[/cyan] or [cyan]~/.bash_profile[/cyan].",
+            title="Manual Setup"
+        ) if _rich else _panel(
+            "Run:  export CMC_API_KEY=your_key_here\n"
+            "Then restart the demo.",
+            title="Manual Setup"
+        )
+        sys.exit(0)
+
+    # choice == "1" (or anything else → prompt for key)
+    _print()
+    key_val = _input("  [bold cyan]Paste your CMC API key[/bold cyan]: " if _rich else "  Paste your CMC API key: ").strip()
+
+    if not key_val:
+        _print("\n[red]No key entered. Please set CMC_API_KEY and try again.[/red]") if _rich else print("\nNo key entered.")
+        sys.exit(1)
+
+    os.environ["CMC_API_KEY"] = key_val
+    _save_to_dotenv("CMC_API_KEY", key_val)
+
+    _print()
+    _print("[bold green]✓ Key saved to .env — you won't be asked again.[/bold green]") if _rich else print("✓ Key saved.")
+    _print()
+    time.sleep(0.8)
+    return key_val
+
+
+# ── Resolve keys (run wizard if CMC key missing) ───────────────────────────────
 CMC_API_KEY = os.getenv("CMC_API_KEY")
 if not CMC_API_KEY:
-    sys.exit("Error: set the CMC_API_KEY environment variable before running the demo.")
+    CMC_API_KEY = _wizard_cmc()
+
+# DeepSeek is optional — no wizard, just a soft note shown later in the menu
+_DEEPSEEK_AVAILABLE = bool(os.getenv("DEEPSEEK_API_KEY"))
 
 # ── Preset demo inputs ─────────────────────────────────────────────────────────
 DEMO_INPUTS = [
@@ -326,6 +468,8 @@ def show_menu(S: dict) -> str:
             print(f"  [{i}]  {inp}")
         print(f"\n  [C]  {S['menu_custom']}")
         print(f"  [Q]  {S['menu_quit']}\n")
+        if not _DEEPSEEK_AVAILABLE:
+            print("  (AI parsing inactive — set DEEPSEEK_API_KEY to enable)\n")
         choice = input(f"  {S['menu_prompt']}: ").strip()
         return _resolve_choice(choice, S)
 
@@ -341,6 +485,15 @@ def show_menu(S: dict) -> str:
     t.add_row(f"[C]", f"[italic]{S['menu_custom']}[/italic]")
     t.add_row(f"[Q]", f"[dim]{S['menu_quit']}[/dim]")
     console.print(t)
+
+    # DeepSeek soft hint (shown once when key is absent)
+    if not _DEEPSEEK_AVAILABLE:
+        console.print(
+            f"  [dim]✧ AI parsing inactive — set [bold]DEEPSEEK_API_KEY[/bold] to enable "
+            f"(free tier: platform.deepseek.com)[/dim]"
+        )
+    else:
+        console.print(f"  [bold green]✦ AI parsing active (DeepSeek)[/bold green]")
     console.print()
 
     choice = console.input(f"  [bold cyan]{S['menu_prompt']}[/bold cyan]: ").strip()
