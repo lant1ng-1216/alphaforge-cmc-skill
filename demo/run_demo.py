@@ -599,10 +599,9 @@ def _resolve_choice(choice: str, S: dict) -> str:
             return DEMO_INPUTS[idx]
     except ValueError:
         pass
-    # fallback: treat as raw strategy input if it looks like a sentence
-    if len(choice) > 10:
-        return choice
-    # invalid choice → default
+    # Anything that isn't a menu command is treated as a direct strategy request
+    if choice.strip():
+        return choice.strip()
     return DEMO_INPUTS[0]
 
 
