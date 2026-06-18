@@ -1,2 +1,5 @@
 fastapi>=0.110
 matplotlib>=3.7
+rich>=13.0
+pyfiglet>=0.8
+openai>=1.0      # optional: enables LLM-powered intent parsing via DeepSeek (set DEEPSEEK_API_KEY)

@@ -174,4 +174,102 @@ def parse_intent(user_input: str) -> StrategyIntent:
             intent.risk_profile = risk
             break
 
+
+# ── LLM-powered intent parser ──────────────────────────────────────────────────
+
+_LLM_SYSTEM = """\
+You are a crypto trading strategy parser. Extract structured intent from the user's natural-language strategy request.
+
+Output ONLY a JSON object with these exact keys:
+{
+  "asset": "<ticker symbol, e.g. BTC / ETH / BNB / SOL>",
+  "asset_candidates": ["<primary>", "<alt1>", ...],
+  "timeframe": "<one of: 15m / 1h / 4h / 1d / 1w>",
+  "style": "<one of: momentum / mean_reversion / breakout / contrarian / dca>",
+  "constraints": ["<zero or more from: avoid_overheated_sentiment / panic_reversal / control_drawdown / avoid_crowded_longs / high_volatility_filter / low_volatility_accumulation / reduce_exposure_on_volatility>"],
+  "risk_profile": "<one of: conservative / moderate / aggressive>"
+}
+
+Rules:
+- If the user says "I'm bearish" or "hedge" → style: mean_reversion
+- If the user says "follow the trend / breakout" → style: momentum or breakout
+- If timeframe is unclear, default to 4h
+- If asset is unclear, default to BNB
+- If the user mentions "extreme fear / crash / panic" → add panic_reversal to constraints
+- If the user mentions "overheated / FOMO / greed" → add avoid_overheated_sentiment to constraints
+- If the user mentions "low risk / safe / conservative" → risk_profile: conservative
+- If the user writes in Chinese, English, or any language — still output the same JSON
+- Output ONLY the JSON, no explanation, no markdown fences
+"""
+
+
+def parse_intent_llm(user_input: str) -> "StrategyIntent | None":
+    """
+    Use DeepSeek (OpenAI-compatible API) to extract structured strategy intent.
+    Returns None if DEEPSEEK_API_KEY is not set or the call fails —
+    callers should fall back to parse_intent() in that case.
+    """
+    import os
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        return None
+
+    try:
+        from openai import OpenAI  # type: ignore
+    except ImportError:
+        return None
+
+    try:
+        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        msg = client.chat.completions.create(
+            model="deepseek-chat",
+            max_tokens=256,
+            messages=[
+                {"role": "system", "content": _LLM_SYSTEM},
+                {"role": "user",   "content": user_input},
+            ],
+        )
+        raw = msg.choices[0].message.content.strip()
+
+        import json
+        data = json.loads(raw)
+
+        intent = StrategyIntent(raw_input=user_input)
+        intent.asset = str(data.get("asset", "BNB")).upper()
+        intent.asset_candidates = [str(s).upper() for s in data.get("asset_candidates", [intent.asset])]
+        if intent.asset not in intent.asset_candidates:
+            intent.asset_candidates.insert(0, intent.asset)
+
+        tf = str(data.get("timeframe", "4h")).lower()
+        intent.timeframe = tf if tf in {"15m", "1h", "4h", "1d", "1w"} else "4h"
+
+        style = str(data.get("style", "momentum")).lower()
+        intent.style = style if style in {"momentum", "mean_reversion", "breakout", "contrarian", "dca"} else "momentum"
+
+        valid_constraints = {
+            "avoid_overheated_sentiment", "panic_reversal", "control_drawdown",
+            "avoid_crowded_longs", "high_volatility_filter",
+            "low_volatility_accumulation", "reduce_exposure_on_volatility",
+        }
+        intent.constraints = [c for c in data.get("constraints", []) if c in valid_constraints]
+
+        risk = str(data.get("risk_profile", "moderate")).lower()
+        intent.risk_profile = risk if risk in {"conservative", "moderate", "aggressive"} else "moderate"
+
+        return intent
+
+    except Exception:
+        return None
+
+
+def parse_intent_auto(user_input: str) -> "tuple[StrategyIntent, str]":
+    """
+    Try LLM first; fall back to regex.
+    Returns (intent, method) where method is 'llm' or 'regex'.
+    """
+    llm_result = parse_intent_llm(user_input)
+    if llm_result is not None:
+        return llm_result, "llm"
+    return parse_intent(user_input), "regex"
+
     return intent
