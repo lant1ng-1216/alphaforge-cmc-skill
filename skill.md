@@ -138,6 +138,29 @@ At least 3 specific, concrete conditions under which this strategy is expected t
 
 ---
 
+## Chart output
+
+Every strategy run automatically generates a three-panel PNG chart and saves it to disk. No extra flags or parameters required. After the Executive Summary, the terminal prints the full file path and a hint:
+
+```
+📊 Chart saved  demo/alphaforge_BNB_4h_bearish_trend.png
+   Open with any image viewer — saved in demo/
+```
+
+**File naming**: `demo/alphaforge_{ASSET}_{TIMEFRAME}_{REGIME}.png`
+
+**Three-panel layout**:
+
+| Panel | Content |
+|---|---|
+| Top — Price + EMAs | 365-day daily price (blue), EMA20 (yellow dashed), EMA50 (red dashed), regime label + confidence annotated in the top-left corner |
+| Middle — RSI14 + Sentiment | RSI14 line, overbought zone (>70, red fill), oversold zone (<30, green fill), live Fear & Greed score annotated top-right |
+| Bottom — Equity curve | AlphaForge strategy equity (green solid) vs buy-and-hold benchmark (gray dashed), both starting at $10,000. Bottom bar shows: Sharpe, Max DD, Win Rate, Trades, Exposure |
+
+**Purpose**: The chart is standalone visual evidence — independent of the terminal text output — intended for reviewers, Agent callers, or end users who want to see the strategy's behavior over the full historical window at a glance. A flat green line against a falling gray line is itself a meaningful result: the strategy preserved capital by not trading in an adverse regime.
+
+---
+
 ## Bilingual output
 
 AlphaForge supports English and Chinese output. The interactive demo (`demo/run_demo.py`) presents a language picker on first launch. All section titles, field labels, table headers, and the executive summary are localized. The strategy YAML spec is always English regardless of UI language.
