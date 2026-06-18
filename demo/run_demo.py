@@ -150,18 +150,105 @@ def _wizard_cmc() -> str:
     _save_to_dotenv("CMC_API_KEY", key_val)
 
     _print()
-    _print("[bold green]✓ Key saved to .env — you won't be asked again.[/bold green]") if _rich else print("✓ Key saved.")
+    _print("[bold green]✓ CMC key saved to .env — you won't be asked again.[/bold green]") if _rich else print("✓ Key saved.")
     _print()
-    time.sleep(0.8)
+    time.sleep(0.6)
     return key_val
 
 
-# ── Resolve keys (run wizard if CMC key missing) ───────────────────────────────
+def _wizard_deepseek() -> None:
+    """
+    Optional second step of first-run wizard: prompt for DeepSeek API key.
+    User can skip at any time — AlphaForge works fine without it.
+    """
+    try:
+        from rich.console import Console as _C
+        from rich.panel import Panel as _P
+        from rich.rule import Rule as _R
+        from rich.table import Table as _T
+        from rich import box as _box
+        _con = _C()
+        def _print(msg="", **kw): _con.print(msg, **kw)
+        def _input(prompt): return _con.input(prompt)
+        def _rule(t): _con.print(_R(f"[bold blue]{t}[/bold blue]", style="blue"))
+        def _panel(body, title=""): _con.print(_P(body, title=f"[bold blue]{title}[/bold blue]", border_style="blue", padding=(1, 4)))
+        _rich = True
+    except ImportError:
+        def _print(msg="", **kw): print(msg)
+        def _input(prompt): return input(prompt)
+        def _rule(t): print(f"\n  {t}\n")
+        def _panel(body, title=""): print(f"\n{title}\n{body}\n")
+        _rich = False
+
+    _rule("Step 2 of 2 — AI-Powered Intent Parsing (Optional)")
+    _print()
+    _panel(
+        "[bold white]Enable DeepSeek AI for smarter strategy input[/bold white]\n\n"
+        "[cyan]Without AI (rule-based only):[/cyan]\n"
+        "  • Works great with standard phrases like\n"
+        "    \"BTC 4H momentum strategy, conservative risk\"\n\n"
+        "[bold green]With DeepSeek AI:[/bold green]\n"
+        "  ✦  Write in [bold]any language[/bold] — Chinese, English, mixed\n"
+        "  ✦  Use natural expressions — \"我看空 BTC\" or \"I'm bearish\"\n"
+        "  ✦  No specific keywords required — the AI understands context\n"
+        "  ✦  Terminal shows [bold green]✦ AI parsing active[/bold green] badge\n\n"
+        "[dim]Free tier available · No GPU needed · API call per request[/dim]\n"
+        "[dim]Get your key: platform.deepseek.com[/dim]",
+        title="Optional: DeepSeek AI Parsing"
+    ) if _rich else _panel(
+        "With DeepSeek AI: write in any language, use natural expressions.\n"
+        "Without it: keyword-based parsing still works great.\n"
+        "Get a free key at: platform.deepseek.com",
+        title="Optional: DeepSeek AI Parsing"
+    )
+    _print()
+
+    if _rich:
+        t = _T(box=_box.SIMPLE, show_header=False, padding=(0, 2))
+        t.add_column(style="bold cyan", width=5)
+        t.add_column()
+        t.add_row("[1]", "Paste my DeepSeek key now  [dim](saved to .env)[/dim]")
+        t.add_row("[S]", "[dim]Skip for now  (can add later in .env)[/dim]")
+        _con.print(t)
+    else:
+        print("  [1]  Paste my DeepSeek key now")
+        print("  [S]  Skip for now\n")
+
+    _print()
+    choice = _input("  [bold cyan]>[/bold cyan] " if _rich else "  > ").strip().upper()
+
+    if choice == "1":
+        _print()
+        key_val = _input(
+            "  [bold cyan]Paste your DeepSeek API key[/bold cyan]: " if _rich
+            else "  Paste your DeepSeek API key: "
+        ).strip()
+        if key_val:
+            os.environ["DEEPSEEK_API_KEY"] = key_val
+            _save_to_dotenv("DEEPSEEK_API_KEY", key_val)
+            _print()
+            _print("[bold green]✦ DeepSeek AI enabled — saved to .env.[/bold green]") if _rich else print("✦ AI enabled.")
+            _print()
+            time.sleep(0.6)
+        else:
+            _print("[dim]No key entered, skipping.[/dim]") if _rich else print("Skipped.")
+    else:
+        _print()
+        _print(
+            "[dim]Skipped. You can add DEEPSEEK_API_KEY=your_key to .env any time.[/dim]"
+        ) if _rich else print("Skipped. Add DEEPSEEK_API_KEY to .env any time.")
+        _print()
+        time.sleep(0.4)
+
+
+# ── Resolve keys ───────────────────────────────────────────────────────────────
 CMC_API_KEY = os.getenv("CMC_API_KEY")
 if not CMC_API_KEY:
     CMC_API_KEY = _wizard_cmc()
+    # Only prompt for DeepSeek on first run (right after CMC wizard)
+    if not os.getenv("DEEPSEEK_API_KEY"):
+        _wizard_deepseek()
 
-# DeepSeek is optional — no wizard, just a soft note shown later in the menu
 _DEEPSEEK_AVAILABLE = bool(os.getenv("DEEPSEEK_API_KEY"))
 
 # ── Preset demo inputs ─────────────────────────────────────────────────────────
