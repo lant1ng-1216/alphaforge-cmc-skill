@@ -561,6 +561,37 @@ def print_rich_output(result: dict, S: dict = None) -> None:
         f"stop [bold red]{rm.get('stop_loss_pct')}%[/bold red]  "
         f"max_dd [bold red]{rm.get('max_strategy_drawdown_pct')}%[/bold red]"
     )
+
+    # Full YAML spec block
+    import json as _json
+    _yaml_lines = []
+    _yaml_lines.append(f"version: {spec.get('version', '1.0')}")
+    _yaml_lines.append(f"generated_by: {spec.get('generated_by', 'AlphaForge')}")
+    _yaml_lines.append(f"asset: {spec.get('asset', '')}/{spec.get('quote_asset', 'USDT')}")
+    _yaml_lines.append(f"timeframe: {spec.get('timeframe', '')}")
+    _yaml_lines.append(f"strategy_type: {spec.get('strategy_type', '')}")
+    _yaml_lines.append(f"market_regime: {spec.get('market_regime', {}).get('primary', '')}")
+    er = spec.get("entry_rules", {}).get("all", [])
+    _yaml_lines.append("entry_rules:")
+    for _r in er:
+        _yaml_lines.append(f"  - {_r}")
+    xr = spec.get("exit_rules", {}).get("any", [])
+    _yaml_lines.append("exit_rules:")
+    for _r in xr:
+        _yaml_lines.append(f"  - {_r}")
+    _yaml_lines.append("risk_management:")
+    for _k, _v in rm.items():
+        _yaml_lines.append(f"  {_k}: {_v}")
+    bc = spec.get("backtest", {})
+    _yaml_lines.append("backtest_config:")
+    for _k, _v in bc.items():
+        _yaml_lines.append(f"  {_k}: {_v}")
+    em = spec.get("evaluation_metrics", [])
+    _yaml_lines.append("evaluation_metrics:")
+    for _m in em:
+        _yaml_lines.append(f"  - {_m}")
+    from rich.syntax import Syntax
+    console.print(Syntax("\n".join(_yaml_lines), "yaml", theme="monokai", line_numbers=False, background_color="default"))
     console.print()
 
     # ── 6. Backtest ─────────────────────────────────────────────────────────
@@ -654,3 +685,19 @@ def print_rich_output(result: dict, S: dict = None) -> None:
         padding=(1, 4),
     ))
     console.print()
+
+    # ── Auto-generate chart ─────────────────────────────────────────────────
+    ohlcv = result.get("_ohlcv")
+    if ohlcv:
+        try:
+            from .visualizer import plot_results
+            chart_path = plot_results(result, ohlcv)
+            chart_label = "图表已保存" if is_zh else "Chart saved"
+            chart_hint  = "用图片查看器打开，或在 demo/ 目录下查找" if is_zh else "Open with any image viewer — saved in demo/"
+            console.print(
+                f"  [bold green]📊 {chart_label}[/bold green]  [cyan]{chart_path}[/cyan]\n"
+                f"  [dim]{chart_hint}[/dim]"
+            )
+            console.print()
+        except Exception:
+            pass
