@@ -174,6 +174,8 @@ def parse_intent(user_input: str) -> StrategyIntent:
             intent.risk_profile = risk
             break
 
+    return intent
+
 
 # ── LLM-powered intent parser ──────────────────────────────────────────────────
 
