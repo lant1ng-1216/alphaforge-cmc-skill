@@ -11,6 +11,8 @@ from .regime_classifier import classify_regime, RegimeResult
 from .strategy_templates import select_template, build_spec
 from .backtester import run_backtest, run_walk_forward_backtest
 from .spec_validator import validate_spec
+from .monte_carlo import run_monte_carlo
+from .strategy_reviewer import review_strategy
 
 
 def _round_sig(v: float, sig: int = 6) -> float:
@@ -75,7 +77,7 @@ def generate_strategy(user_input: str, cmc_api_key: str, step_callback=None) -> 
     """
     def _step(n, msg):
         if step_callback:
-            step_callback(n, 8, msg)
+            step_callback(n, 10, msg)
 
     cmc = CMCAdapter(cmc_api_key)
 
@@ -186,8 +188,29 @@ def generate_strategy(user_input: str, cmc_api_key: str, step_callback=None) -> 
         n_periods=2,
     )
 
-    # Step 8: Build explanation + failure modes
-    _step(8, "Generating report, explanation & failure modes…")
+    # Step 8c: Monte Carlo simulation (1000 bootstrap paths)
+    _step(8, "Running Monte Carlo simulation (1000 paths)…")
+    equity_curve_full = backtest_results.get("equity_curve_full", backtest_results.get("equity_curve", []))
+    monte_carlo_results = run_monte_carlo(
+        equity_curve=equity_curve_full,
+        n_simulations=1000,
+        initial_capital=spec["backtest"]["initial_capital"],
+    )
+
+    # Step 9: Three-layer Agent Review chain
+    _step(9, "Running three-layer strategy review (Risk → Regime → Gatekeeper)…")
+    review_results = review_strategy(
+        spec=spec,
+        features=feat,
+        regime_primary=regime_result.primary,
+        intent=intent.to_dict(),
+        backtest=backtest_results,
+        walk_forward=walk_forward_results,
+        monte_carlo=monte_carlo_results,
+    )
+
+    # Step 10: Build explanation + failure modes
+    _step(10, "Generating report, explanation & failure modes…")
     explanation = _build_explanation(intent, regime_result, template_name, backtest_results)
     failure_modes = _build_failure_modes(template_name, regime_result)
 
@@ -213,6 +236,8 @@ def generate_strategy(user_input: str, cmc_api_key: str, step_callback=None) -> 
         "backtest": backtest_results,
         "walk_forward": walk_forward_results,
         "live_cross_check": live_cross_check,
+        "monte_carlo": monte_carlo_results,
+        "strategy_review": review_results,
         "explanation": explanation,
         "failure_modes": failure_modes,
     }
@@ -642,6 +667,93 @@ def print_rich_output(result: dict, S: dict = None) -> None:
                 str(p["number_of_trades"]),
             )
         console.print(wt)
+
+    # ── 6c. Monte Carlo ─────────────────────────────────────────────────────
+    mc = result.get("monte_carlo") or {}
+    if mc and "error" not in mc:
+        mc_title = "STEP 6c — Monte Carlo Simulation (1000 paths)" if not S.get("summary_title", "").startswith("AlphaForge — 执行") else "STEP 6c — 蒙特卡洛模拟（1000 次路径）"
+        section(mc_title)
+        ret = mc.get("total_return", {})
+        sh  = mc.get("sharpe_ratio", {})
+        dd  = mc.get("max_drawdown_pct", {})
+        prob_pos = mc.get("probability_positive_return_pct", 0)
+        prob_sh1 = mc.get("probability_sharpe_gt_1_pct", 0)
+        prob_dd  = mc.get("probability_large_drawdown_pct", 0)
+
+        mc_t = Table(box=box.ROUNDED, header_style="bold blue", padding=(0, 2))
+        mc_t.add_column("Metric", style="dim", no_wrap=True)
+        mc_t.add_column("p5",  justify="right")
+        mc_t.add_column("p25", justify="right")
+        mc_t.add_column("p50 (median)", justify="right")
+        mc_t.add_column("p75", justify="right")
+        mc_t.add_column("p95", justify="right")
+        mc_t.add_row(
+            "Total Return",
+            _ret(ret.get("p5", 0)), _ret(ret.get("p25", 0)),
+            _ret(ret.get("p50", 0)), _ret(ret.get("p75", 0)),
+            _ret(ret.get("p95", 0)),
+        )
+        sh_p50 = sh.get("p50", 0)
+        sh_color = "green" if sh_p50 >= 1 else ("yellow" if sh_p50 >= 0.5 else "red")
+        mc_t.add_row(
+            "Sharpe Ratio",
+            f"{sh.get('p5', 0):.2f}", "—",
+            f"[{sh_color}]{sh_p50:.2f}[/{sh_color}]", "—",
+            f"{sh.get('p95', 0):.2f}",
+        )
+        mc_t.add_row(
+            "Max Drawdown",
+            "—", "—",
+            f"[yellow]{dd.get('p50', 0):.1f}%[/yellow]", "—",
+            f"[red]{dd.get('p95', 0):.1f}%[/red]",
+        )
+        console.print(mc_t)
+        prob_color = "green" if prob_pos >= 60 else ("yellow" if prob_pos >= 40 else "red")
+        console.print(
+            f"  P(positive return) [{prob_color}]{prob_pos:.0f}%[/{prob_color}]  |  "
+            f"P(Sharpe > 1) {prob_sh1:.0f}%  |  "
+            f"P(drawdown > 20%) [red]{prob_dd:.0f}%[/red]"
+        )
+        console.print()
+
+    # ── 9. Strategy Review ──────────────────────────────────────────────────
+    rev = result.get("strategy_review") or {}
+    if rev:
+        rev_title = "STEP 9 — Strategy Review (3-Agent Chain)" if not S.get("summary_title", "").startswith("AlphaForge — 执行") else "STEP 9 — 策略审核（三层 Agent 链）"
+        section(rev_title)
+        final_v = rev.get("final_verdict", "")
+        conf = rev.get("confidence", 0)
+        verdict_color = {
+            "APPROVED": "bold green",
+            "APPROVED_WITH_WARNINGS": "bold yellow",
+            "CONDITIONALLY_APPROVED": "bold yellow",
+            "REJECTED": "bold red",
+        }.get(final_v, "white")
+        console.print(f"  [{verdict_color}]{final_v}[/{verdict_color}]  (confidence {conf}%)")
+        console.print(f"  [italic]{rev.get('summary', '')}[/italic]")
+        console.print()
+
+        for agent_key, label in [("risk_agent", "RiskAgent"), ("regime_agent", "RegimeAgent")]:
+            agent = rev.get(agent_key, {})
+            av = agent.get("verdict", "pass")
+            av_color = "green" if av == "pass" else ("yellow" if av == "warn" else "red")
+            console.print(f"  [bold]{label}[/bold]  verdict: [{av_color}]{av.upper()}[/{av_color}]  (confidence {agent.get('confidence', 1.0):.0%})")
+            for chk in agent.get("checks", []):
+                cv = chk.get("verdict", "pass")
+                cc = "green" if cv == "pass" else ("yellow" if cv == "warn" else "red")
+                icon = "✅" if cv == "pass" else ("⚠️ " if cv == "warn" else "❌")
+                console.print(f"    {icon} [{cc}]{chk.get('name', '')}:[/{cc}] {chk.get('message', '')}")
+            console.print()
+
+        if rev.get("warnings"):
+            console.print("  [yellow]Gatekeeper warnings:[/yellow]")
+            for w in rev["warnings"]:
+                console.print(f"    [yellow]▸[/yellow] {w}")
+        if rev.get("rejections"):
+            console.print("  [red]Gatekeeper rejections:[/red]")
+            for r in rev["rejections"]:
+                console.print(f"    [red]✗[/red] {r}")
+        console.print()
 
     # ── 7. Explanation ──────────────────────────────────────────────────────
     section(S["s7_title"])

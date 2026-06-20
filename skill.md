@@ -130,10 +130,41 @@ Split the 365-day backtest window into two independent halves. Run the same stra
 
 **Why this matters**: Walk-forward is the standard anti-overfitting check used in professional quant workflows. If a strategy only works in one half-period, the walk-forward table exposes it. A period with 0 trades means the signal conditions were never met — this is correct disciplined behavior, not a bug.
 
-### STEP 9 — Strategy Explanation
+### STEP 6c — Monte Carlo Simulation (1000 paths)
+
+Bootstrap-resample the strategy's daily equity returns 1,000 times to convert the single deterministic backtest into a probability distribution of outcomes.
+
+Report:
+- Percentile bands for total return, Sharpe ratio, and max drawdown: p5 / p25 / p50 / p75 / p95
+- P(positive return): percentage of 1000 paths ending positive
+- P(Sharpe > 1): percentage achieving professional-grade Sharpe
+- P(drawdown > 20%): tail risk probability
+
+**Why this matters**: A single backtest is a point estimate on one path through history. 1000 bootstrap paths reveal the full distribution of possible outcomes under the same rules.
+
+### STEP 9 — Three-Layer Strategy Review (Agent Chain)
+
+An independent three-agent review chain evaluates the strategy after all quantitative evidence is available:
+
+**RiskAgent** — risk parameter calibration:
+- Stop-loss vs realized volatility (is the stop wide enough to survive daily noise?)
+- Position size vs declared risk profile
+- Backtest drawdown vs spec drawdown limit
+
+**RegimeAgent** — regime classification and strategy alignment:
+- Strategy-regime canonical fit
+- Entry condition feasibility given current indicator values
+- User intent vs regime conflict detection
+
+**Gatekeeper** — final synthesis with full evidence:
+- Combines both upstream verdicts with Monte Carlo probabilities and walk-forward consistency
+- Issues binding verdict: `APPROVED` / `APPROVED_WITH_WARNINGS` / `CONDITIONALLY_APPROVED` / `REJECTED`
+- Reports confidence score (0–100) and full reasoning chain
+
+### STEP 10 — Strategy Explanation
 Plain-language explanation of why this strategy fits the current market regime, what market conditions would change the recommendation, and what the backtest results mean in context.
 
-### STEP 10 — Known Failure Modes
+### STEP 11 — Known Failure Modes
 At least 3 specific, concrete conditions under which this strategy is expected to underperform or should not be used. This demonstrates intellectual honesty and research rigor.
 
 ---
@@ -187,7 +218,9 @@ AlphaForge supports English and Chinese output. The interactive demo (`demo/run_
 - Risk management must include: `max_position_size_pct`, `stop_loss_pct`, `max_strategy_drawdown_pct`
 - Backtest must compare against buy-and-hold benchmark
 - Walk-forward check must always be run and reported (STEP 8b)
-- Always end with failure modes (STEP 10) — intellectual honesty is non-negotiable
+- Monte Carlo simulation (1000 paths) must always follow the backtest (STEP 6c)
+- Three-layer Agent review must always run and report Gatekeeper verdict (STEP 9)
+- Always end with failure modes (STEP 11) — intellectual honesty is non-negotiable
 
 ---
 

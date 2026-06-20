@@ -1,0 +1,107 @@
+{
+  "version": "1.0.0",
+  "name": "alphaforge-cmc-skill",
+  "description": "Quantopian-style crypto strategy generation powered by CoinMarketCap. Converts natural-language trading ideas into structured, backtestable strategy specifications with 365-day backtests, Monte Carlo simulation, and three-layer Agent review.",
+  "repository": "https://github.com/lant1ng-1216/alphaforge-cmc-skill",
+  "on_chain_identity": {
+    "registry": "ERC-8004",
+    "network": "bnb-chain",
+    "agent_name": "alphaforge-strategy-skill",
+    "tx": "0x81f50684a4399409ebc84129d8074165559ed839cb89321e58f52f01cb95b185"
+  },
+  "install": {
+    "method": "pip",
+    "command": "pip install -r requirements.txt",
+    "run": "python demo/run_demo.py"
+  },
+  "skills": [
+    {
+      "unique_name": "alphaforge-strategy-generation",
+      "role": "primary",
+      "display_name": "AlphaForge Strategy Generator",
+      "description": "Full pipeline: NL intent → regime detection → strategy spec → 365-day backtest → Monte Carlo (1000 paths) → 3-agent review. Outputs machine-readable YAML spec and rich terminal report.",
+      "keywords": ["strategy", "backtest", "regime", "quantitative", "crypto", "momentum", "reversal", "breakout"],
+      "input_schema": {
+        "type": "object",
+        "required": ["user_input", "cmc_api_key"],
+        "properties": {
+          "user_input": {
+            "type": "string",
+            "description": "Natural language strategy request in any language. Examples: 'Generate a BTC panic reversal strategy', '我想做 SOL 突破策略，激进一点'"
+          },
+          "cmc_api_key": {
+            "type": "string",
+            "description": "CoinMarketCap API key"
+          }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "spec":             { "type": "object", "description": "YAML-serializable strategy spec with entry/exit rules" },
+          "backtest":         { "type": "object", "description": "365-day simulation: return, Sharpe, max DD, alpha vs B&H" },
+          "walk_forward":     { "type": "array",  "description": "Two-period walk-forward consistency check" },
+          "monte_carlo":      { "type": "object", "description": "1000-path bootstrap: p5/p50/p95 for return, Sharpe, drawdown" },
+          "strategy_review":  { "type": "object", "description": "3-agent review: RiskAgent, RegimeAgent, Gatekeeper verdict" },
+          "regime":           { "type": "object", "description": "One of 8 market regimes with confidence and signal values" },
+          "live_cross_check": { "type": "object", "description": "AlphaForge computed indicators vs CMC Data MCP official TA" }
+        }
+      }
+    },
+    {
+      "unique_name": "alphaforge-regime-classifier",
+      "role": "utility",
+      "display_name": "AlphaForge Regime Classifier",
+      "description": "Classify current market into one of 8 regimes using live CMC data and computed technical features. Returns primary regime, confidence, and driving signals.",
+      "keywords": ["regime", "market", "classification", "trend", "bearish", "bullish", "volatility"],
+      "input_schema": {
+        "type": "object",
+        "required": ["asset", "cmc_api_key"],
+        "properties": {
+          "asset": { "type": "string", "description": "Ticker symbol, e.g. BTC, ETH, SOL, BNB" },
+          "cmc_api_key": { "type": "string" }
+        }
+      }
+    },
+    {
+      "unique_name": "alphaforge-monte-carlo",
+      "role": "utility",
+      "display_name": "AlphaForge Monte Carlo Risk Estimator",
+      "description": "Bootstrap 1000 equity paths from a strategy backtest to estimate the distribution of possible outcomes. Returns percentile bands for return, Sharpe, and max drawdown.",
+      "keywords": ["monte carlo", "risk", "simulation", "confidence interval", "bootstrap", "probability"],
+      "input_schema": {
+        "type": "object",
+        "required": ["equity_curve"],
+        "properties": {
+          "equity_curve": { "type": "array", "items": { "type": "number" }, "description": "Daily portfolio value series from a backtest run" },
+          "n_simulations": { "type": "integer", "default": 1000 }
+        }
+      }
+    },
+    {
+      "unique_name": "alphaforge-strategy-review",
+      "role": "utility",
+      "display_name": "AlphaForge 3-Agent Strategy Reviewer",
+      "description": "Three-layer agent review chain: RiskAgent (parameter calibration), RegimeAgent (regime-strategy alignment), Gatekeeper (final verdict with Monte Carlo evidence). Returns APPROVED / APPROVED_WITH_WARNINGS / CONDITIONALLY_APPROVED / REJECTED.",
+      "keywords": ["review", "risk", "validation", "agent", "gatekeeper", "approval"],
+      "input_schema": {
+        "type": "object",
+        "required": ["spec", "features", "regime_primary", "intent", "backtest", "monte_carlo"],
+        "properties": {
+          "spec":           { "type": "object" },
+          "features":       { "type": "object" },
+          "regime_primary": { "type": "string" },
+          "intent":         { "type": "object" },
+          "backtest":       { "type": "object" },
+          "monte_carlo":    { "type": "object" }
+        }
+      }
+    }
+  ],
+  "data_sources": [
+    { "name": "CoinMarketCap API",  "type": "rest",       "provides": ["price", "fear_greed", "global_metrics"] },
+    { "name": "CMC Data MCP",       "type": "mcp",        "provides": ["official_ta", "derivatives_snapshot"] },
+    { "name": "Binance public API", "type": "rest",       "provides": ["ohlcv_daily_365"] },
+    { "name": "DeepSeek API",       "type": "llm",        "provides": ["intent_parsing"], "optional": true }
+  ]
+}

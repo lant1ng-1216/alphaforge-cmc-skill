@@ -230,7 +230,8 @@ def run_backtest(
         "number_of_trades": len(completed_trades),
         "exposure_time_pct": round(exposure_time, 1),
         "final_equity": round(equity, 2),
-        "equity_curve": [round(v, 2) for v in equity_curve[::5]],  # downsample for output
+        "equity_curve": [round(v, 2) for v in equity_curve[::5]],      # downsampled for visualizer
+        "equity_curve_full": [round(v, 2) for v in equity_curve],      # full series for Monte Carlo
     }
 
 
