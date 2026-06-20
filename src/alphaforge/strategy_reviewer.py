@@ -289,7 +289,140 @@ def run_regime_agent(
     return AgentReview(agent="RegimeAgent", verdict=worst, checks=checks, confidence=confidence)
 
 
-# ── Gatekeeper ─────────────────────────────────────────────────────────────────
+# ── Gatekeeper (LLM-powered) ───────────────────────────────────────────────────
+
+_GATEKEEPER_SYSTEM = """\
+You are the Gatekeeper, the final decision-making agent in a three-layer crypto \
+strategy review chain. You receive structured evidence from two upstream rule-based \
+agents (RiskAgent and RegimeAgent), plus quantitative backtest results, Monte Carlo \
+simulation data, and walk-forward consistency checks.
+
+Your job is to synthesize ALL of this evidence and issue a final binding verdict.
+
+You must reason about:
+1. Whether upstream agent warnings are truly disqualifying or acceptable given context
+2. Whether the backtest alpha vs buy-and-hold justifies the risk (especially in bear markets)
+3. Whether Monte Carlo confidence intervals suggest a durable edge or just luck
+4. Whether walk-forward consistency supports or undermines the strategy's reliability
+5. Whether the user's intent is achievable given the current market regime
+
+Output ONLY a JSON object with exactly these keys:
+{
+  "final_verdict": "<APPROVED | APPROVED_WITH_WARNINGS | CONDITIONALLY_APPROVED | REJECTED>",
+  "confidence": <integer 0-95>,
+  "summary": "<2-3 sentence reasoning for the verdict>",
+  "key_risks": ["<risk 1>", "<risk 2>"],
+  "deployment_guidance": "<one actionable sentence: what should the trader do next>"
+}
+
+Verdict definitions:
+- APPROVED: strong evidence the strategy is viable; all checks pass; MC confidence high
+- APPROVED_WITH_WARNINGS: strategy is viable but has specific concerns; size normally but monitor
+- CONDITIONALLY_APPROVED: significant concerns; reduce position size 30-50%; re-evaluate if regime changes
+- REJECTED: hard failure — deploy would be irresponsible (e.g. risk parameters breached in backtest, no edge whatsoever)
+
+Critical context: In a bearish market regime, a strategy that preserves capital \
+(near-zero return vs large B&H loss) is functioning correctly. A negative Sharpe \
+with strong alpha vs B&H is NOT a failure — it is capital discipline. \
+Do not reject strategies solely because their absolute return is negative.
+
+Output ONLY the JSON. No markdown fences. No explanation outside the JSON.
+"""
+
+
+def _run_gatekeeper_llm(
+    risk_review: AgentReview,
+    regime_review: AgentReview,
+    backtest: dict,
+    walk_forward: list[dict],
+    monte_carlo: dict,
+    intent: dict,
+) -> dict | None:
+    """
+    LLM-powered Gatekeeper using DeepSeek.
+    Builds a structured evidence packet from all upstream agents and quantitative
+    results, then asks the LLM to reason about them and issue a final verdict.
+    Returns parsed JSON dict, or None if unavailable (triggers rule-based fallback).
+    """
+    import os, json as _json
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key:
+        return None
+
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return None
+
+    # Build the evidence packet — this is what the LLM "reads" as context
+    mc_note = monte_carlo.get("note", "")
+    mc_prob = monte_carlo.get("probability_positive_return_pct")
+    mc_sharpe_p50 = monte_carlo.get("sharpe_ratio", {}).get("p50")
+    mc_dd_p95 = monte_carlo.get("max_drawdown_pct", {}).get("p95")
+    bt_alpha = backtest.get("total_return_pct", 0) - backtest.get("buy_and_hold_return_pct", 0)
+
+    wf_summary = []
+    for p in walk_forward:
+        wf_summary.append(
+            f"  {p.get('period_label','')}: return {p.get('total_return_pct',0):+.1f}%, "
+            f"Sharpe {p.get('sharpe_ratio',0):.2f}, trades {p.get('number_of_trades',0)}"
+        )
+
+    risk_checks = "\n".join(
+        f"  [{c.verdict.upper()}] {c.name}: {c.message}"
+        for c in risk_review.checks
+    )
+    regime_checks = "\n".join(
+        f"  [{c.verdict.upper()}] {c.name}: {c.message}"
+        for c in regime_review.checks
+    )
+
+    evidence = f"""
+=== USER INTENT ===
+asset: {intent.get('asset','')}, timeframe: {intent.get('timeframe','')}, \
+style: {intent.get('style','')}, risk_profile: {intent.get('risk_profile','')}
+
+=== RISK AGENT VERDICT: {risk_review.verdict.upper()} (confidence {risk_review.confidence:.0%}) ===
+{risk_checks}
+
+=== REGIME AGENT VERDICT: {regime_review.verdict.upper()} (confidence {regime_review.confidence:.0%}) ===
+{regime_checks}
+
+=== BACKTEST RESULTS (365 days) ===
+  Total return:       {backtest.get('total_return_pct', 0):+.2f}%
+  Buy & hold return:  {backtest.get('buy_and_hold_return_pct', 0):+.2f}%
+  Alpha vs B&H:       {bt_alpha:+.2f}pp
+  Max drawdown:       -{backtest.get('max_drawdown_pct', 0):.2f}%
+  Sharpe ratio:       {backtest.get('sharpe_ratio', 0):.2f}
+  Win rate:           {backtest.get('win_rate_pct', 0):.1f}%
+  Number of trades:   {backtest.get('number_of_trades', 0)}
+  Exposure time:      {backtest.get('exposure_time_pct', 0):.1f}%
+
+=== MONTE CARLO (1000 bootstrap paths) ===
+{f"  Note: {mc_note}" if mc_note else f"  P(positive return): {mc_prob:.0f}%" if mc_prob is not None else "  Not available"}
+{f"  Median Sharpe: {mc_sharpe_p50:.2f}" if mc_sharpe_p50 is not None else ""}
+{f"  p95 max drawdown: {mc_dd_p95:.1f}%" if mc_dd_p95 is not None else ""}
+
+=== WALK-FORWARD CONSISTENCY ===
+{chr(10).join(wf_summary) if wf_summary else "  Not available"}
+""".strip()
+
+    try:
+        client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+        msg = client.chat.completions.create(
+            model="deepseek-chat",
+            max_tokens=400,
+            temperature=0.2,
+            messages=[
+                {"role": "system", "content": _GATEKEEPER_SYSTEM},
+                {"role": "user",   "content": evidence},
+            ],
+        )
+        raw = msg.choices[0].message.content.strip()
+        return _json.loads(raw)
+    except Exception:
+        return None
+
 
 def run_gatekeeper(
     risk_review: AgentReview,
@@ -300,128 +433,124 @@ def run_gatekeeper(
     intent: dict | None = None,
 ) -> GatekeeperReview:
     """
-    Final synthesis agent. Weighs both upstream reviews against quantitative
-    evidence (backtest, walk-forward, Monte Carlo) to issue a binding verdict.
-
-    Verdict ladder:
-      APPROVED              — all checks pass, MC confidence strong
-      APPROVED_WITH_WARNINGS — warnings present but strategy is viable
-      CONDITIONALLY_APPROVED — significant concerns; deploy only with reduced size
-      REJECTED               — hard failure in risk checks or MC evidence
+    LLM-powered Gatekeeper (DeepSeek).
+    Synthesizes RiskAgent + RegimeAgent reports with backtest, Monte Carlo,
+    and walk-forward evidence to issue a final binding verdict via LLM reasoning.
+    Falls back to rule-based logic if DEEPSEEK_API_KEY is unavailable.
     """
+    if intent is None:
+        intent = {}
+
+    # ── Try LLM Gatekeeper first ────────────────────────────────────────────
+    llm_result = _run_gatekeeper_llm(
+        risk_review, regime_review, backtest, walk_forward, monte_carlo, intent
+    )
+
+    if llm_result:
+        raw_verdict = llm_result.get("final_verdict", "APPROVED_WITH_WARNINGS")
+        valid_verdicts = {"APPROVED", "APPROVED_WITH_WARNINGS", "CONDITIONALLY_APPROVED", "REJECTED"}
+        final_verdict: FinalVerdict = raw_verdict if raw_verdict in valid_verdicts else "APPROVED_WITH_WARNINGS"
+        confidence = max(0, min(95, int(llm_result.get("confidence", 70))))
+        summary = llm_result.get("summary", "")
+        key_risks = llm_result.get("key_risks", [])
+        guidance = llm_result.get("deployment_guidance", "")
+
+        # Collect upstream warnings for display (still shown even in LLM mode)
+        warnings: list[str] = []
+        rejections: list[str] = []
+        if risk_review.verdict == "reject":
+            rejections.extend([c.message for c in risk_review.checks if c.verdict == "reject"])
+        elif risk_review.verdict == "warn":
+            warnings.extend([c.message for c in risk_review.checks if c.verdict == "warn"])
+        if regime_review.verdict == "reject":
+            rejections.extend([c.message for c in regime_review.checks if c.verdict == "reject"])
+        elif regime_review.verdict == "warn":
+            warnings.extend([c.message for c in regime_review.checks if c.verdict == "warn"])
+
+        # Append LLM-identified risks and guidance to summary
+        full_summary = summary
+        if guidance:
+            full_summary += f" {guidance}"
+
+        return GatekeeperReview(
+            final_verdict=final_verdict,
+            confidence=confidence,
+            risk_review=risk_review,
+            regime_review=regime_review,
+            summary=full_summary,
+            warnings=warnings + [f"[LLM] {r}" for r in key_risks],
+            rejections=rejections,
+        )
+
+    # ── Rule-based fallback (no DEEPSEEK_API_KEY) ───────────────────────────
     warnings: list[str] = []
     rejections: list[str] = []
 
-    # Collect upstream verdicts
     if risk_review.verdict == "reject":
-        rejections.append(f"RiskAgent rejected: {[c.message for c in risk_review.checks if c.verdict == 'reject']}")
+        rejections.append(f"RiskAgent: {[c.message for c in risk_review.checks if c.verdict == 'reject']}")
     elif risk_review.verdict == "warn":
         warnings.extend([c.message for c in risk_review.checks if c.verdict == "warn"])
 
     if regime_review.verdict == "reject":
-        rejections.append(f"RegimeAgent rejected: {[c.message for c in regime_review.checks if c.verdict == 'reject']}")
+        rejections.append(f"RegimeAgent: {[c.message for c in regime_review.checks if c.verdict == 'reject']}")
     elif regime_review.verdict == "warn":
         warnings.extend([c.message for c in regime_review.checks if c.verdict == "warn"])
 
-    # Monte Carlo evidence
     mc_prob_positive = monte_carlo.get("probability_positive_return_pct", 50.0)
     mc_p50_sharpe = monte_carlo.get("sharpe_ratio", {}).get("p50", 0.0)
     mc_p95_dd = monte_carlo.get("max_drawdown_pct", {}).get("p95", 0.0)
     n_trades = backtest.get("number_of_trades", 0)
     bt_alpha = backtest.get("total_return_pct", 0) - backtest.get("buy_and_hold_return_pct", 0)
-
-    # MC is only meaningful when the strategy actually traded.
-    # 0-trade strategies have a flat equity curve → all bootstrapped returns are 0 →
-    # MC probability metrics are not informative. Evaluate those on trade count alone.
-    mc_meaningful = n_trades >= 3 and "error" not in monte_carlo
+    mc_meaningful = n_trades >= 3 and "error" not in monte_carlo and mc_prob_positive is not None
 
     if mc_meaningful:
-        # In bear markets, a strategy that preserves capital will have low P(positive)
-        # but still outperforms B&H significantly. Reject only when BOTH conditions hold:
-        # MC P(positive) is very low AND the strategy has no meaningful alpha.
         if mc_prob_positive < 20 and bt_alpha < 10:
             rejections.append(
-                f"Monte Carlo: only {mc_prob_positive:.0f}% of 1000 simulations produce positive returns "
-                f"and strategy alpha vs B&H is only {bt_alpha:.1f}pp. "
-                f"Strategy lacks a reliable edge under bootstrapped conditions."
+                f"Monte Carlo: only {mc_prob_positive:.0f}% positive-return paths and "
+                f"alpha only {bt_alpha:.1f}pp vs B&H. No reliable edge detected."
             )
         elif mc_prob_positive < 35 and bt_alpha < 5:
             warnings.append(
                 f"Monte Carlo: {mc_prob_positive:.0f}% probability of positive return with "
-                f"limited alpha ({bt_alpha:.1f}pp vs B&H). Edge is weak in the current regime."
+                f"limited alpha ({bt_alpha:.1f}pp vs B&H)."
             )
         elif mc_prob_positive < 40:
             warnings.append(
-                f"Monte Carlo: {mc_prob_positive:.0f}% probability of positive return. "
-                f"However, strategy alpha vs B&H is {bt_alpha:+.1f}pp — capital preservation in "
-                f"a down market is consistent with this strategy's design."
+                f"Monte Carlo: {mc_prob_positive:.0f}% positive-return probability. "
+                f"Alpha vs B&H {bt_alpha:+.1f}pp suggests capital preservation is the edge."
             )
 
-    if mc_p95_dd > 35:
-        warnings.append(
-            f"Monte Carlo worst-case (p95) max drawdown is {mc_p95_dd:.1f}% — "
-            f"tail risk is elevated. Size accordingly."
-        )
+    if mc_p95_dd and mc_p95_dd > 35:
+        warnings.append(f"p95 tail drawdown {mc_p95_dd:.1f}% — size carefully.")
 
-    # Walk-forward consistency
     if len(walk_forward) >= 2:
         wf_returns = [p["total_return_pct"] for p in walk_forward if "total_return_pct" in p]
-        if len(wf_returns) >= 2:
-            spread = max(wf_returns) - min(wf_returns)
-            if spread > 25:
-                warnings.append(
-                    f"Walk-forward period spread is {spread:.1f}pp — "
-                    f"strategy performance is inconsistent across historical windows. "
-                    f"May be environment-dependent."
-                )
+        if len(wf_returns) >= 2 and max(wf_returns) - min(wf_returns) > 25:
+            warnings.append(f"Walk-forward spread {max(wf_returns)-min(wf_returns):.1f}pp — regime-dependent performance.")
 
-    # Trade count sanity
-    n_trades = backtest.get("number_of_trades", 0)
     if n_trades == 0:
-        warnings.append(
-            "Zero trades executed. Strategy is intentionally idle in this regime — "
-            "backtest statistics are not meaningful. This is correct disciplined behavior."
-        )
+        warnings.append("Zero trades — strategy correctly idle in this regime.")
     elif n_trades < 3:
-        warnings.append(
-            f"Only {n_trades} trade(s) executed. Statistical metrics (Sharpe, win rate) "
-            f"are not reliable at this sample size."
-        )
+        warnings.append(f"Only {n_trades} trade(s) — statistical metrics not reliable.")
 
-    # Determine final verdict
     combined_confidence = (risk_review.confidence + regime_review.confidence) / 2
 
     if rejections:
-        final_verdict: FinalVerdict = "REJECTED"
+        final_verdict = "REJECTED"
         confidence = int(combined_confidence * 30)
-        summary = (
-            f"Strategy REJECTED. Hard failures detected by upstream agents. "
-            f"Do not deploy without addressing: {'; '.join(rejections[:1])}."
-        )
+        summary = f"REJECTED. {rejections[0]}"
     elif len(warnings) >= 3:
         final_verdict = "CONDITIONALLY_APPROVED"
         confidence = int(combined_confidence * 55)
-        summary = (
-            f"Conditionally approved with {len(warnings)} warnings. "
-            f"Consider reducing position size by 30–50% until conditions improve. "
-            f"Key concern: {warnings[0]}"
-        )
+        summary = f"Conditionally approved — {len(warnings)} warnings. Reduce size 30–50%."
     elif warnings:
         final_verdict = "APPROVED_WITH_WARNINGS"
         confidence = int(combined_confidence * 75)
-        summary = (
-            f"Approved with {len(warnings)} warning(s). Strategy is viable but non-ideal. "
-            f"Monte Carlo: {mc_prob_positive:.0f}% probability of positive return, "
-            f"median Sharpe {mc_p50_sharpe:.2f}."
-        )
+        summary = f"Approved with {len(warnings)} warning(s). Monitor closely."
     else:
         final_verdict = "APPROVED"
         confidence = int(combined_confidence * 95)
-        summary = (
-            f"Strategy approved. All agent checks passed. "
-            f"Monte Carlo: {mc_prob_positive:.0f}% probability of positive return, "
-            f"median Sharpe {mc_p50_sharpe:.2f}, p95 max drawdown {mc_p95_dd:.1f}%."
-        )
+        summary = "All checks passed. Strategy approved."
 
     return GatekeeperReview(
         final_verdict=final_verdict,
@@ -466,6 +595,7 @@ def review_strategy(
         backtest=backtest,
         walk_forward=walk_forward,
         monte_carlo=monte_carlo,
+        intent=intent,
     )
 
     return {

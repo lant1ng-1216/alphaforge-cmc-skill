@@ -733,7 +733,9 @@ def print_rich_output(result: dict, S: dict = None) -> None:
             "CONDITIONALLY_APPROVED": "bold yellow",
             "REJECTED": "bold red",
         }.get(final_v, "white")
-        console.print(f"  [{verdict_color}]{final_v}[/{verdict_color}]  (confidence {conf}%)")
+        import os as _os
+        gk_mode = "[bold green]DeepSeek LLM[/bold green]" if _os.getenv("DEEPSEEK_API_KEY") else "[dim]rule-based fallback[/dim]"
+        console.print(f"  [{verdict_color}]{final_v}[/{verdict_color}]  (confidence {conf}%)  [dim]Gatekeeper: {gk_mode}[/dim]")
         console.print(f"  [italic]{rev.get('summary', '')}[/italic]")
         console.print()
 
