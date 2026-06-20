@@ -715,13 +715,18 @@ def main():
     args = parser.parse_args()
 
     # ── Banner first (language-agnostic) ──────────────────────────────────
-    # Show banner with neutral English strings, then let user pick language
-    print_banner(STRINGS["en"])
+    # In JSON mode suppress all decorative output so stdout is valid JSON only.
+    if args.json:
+        pass
+    else:
+        print_banner(STRINGS["en"])
 
     # ── Language selection ─────────────────────────────────────────────────
     # --lang flag skips the interactive picker (useful for scripting / --all)
     if args.lang:
         S = STRINGS[args.lang]
+    elif args.json:
+        S = STRINGS["en"]  # JSON mode: no interactive picker, no banner
     else:
         S = select_language()
         # Re-print banner in chosen language if it differs
@@ -743,25 +748,27 @@ def main():
             else:
                 print(f"\n{'─'*60}\nDemo {idx + 1} / {len(inputs)}")
 
-        if RICH:
-            console.print(
-                Panel(
-                    f"[bold white]{user_input}[/bold white]",
-                    title=f"[dim]{S['user_input_lbl']}[/dim]",
-                    border_style="dim",
-                    padding=(0, 2),
+        if not args.json:
+            if RICH:
+                console.print(
+                    Panel(
+                        f"[bold white]{user_input}[/bold white]",
+                        title=f"[dim]{S['user_input_lbl']}[/dim]",
+                        border_style="dim",
+                        padding=(0, 2),
+                    )
                 )
-            )
-            console.print()
-        else:
-            print(f"\n>>> {S['user_input_lbl']}: {user_input}\n")
+                console.print()
+            else:
+                print(f"\n>>> {S['user_input_lbl']}: {user_input}\n")
 
         try:
             if args.json:
                 from alphaforge import generate_strategy
                 result = generate_strategy(user_input, CMC_API_KEY)
                 export = {k: v for k, v in result.items() if k != "_ohlcv"}
-                export["backtest"] = {k: v for k, v in export["backtest"].items() if k != "equity_curve"}
+                export["backtest"] = {k: v for k, v in export["backtest"].items()
+                                      if k not in ("equity_curve", "equity_curve_full")}
                 print(json.dumps(export, indent=2))
             else:
                 runner = ProgressRunner(S)
