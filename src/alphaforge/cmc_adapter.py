@@ -85,7 +85,7 @@ class CMCAdapter:
             }
         raise ValueError(f"Symbol not found: {symbol}")
 
-    def _mcp_call(self, tool_name: str, arguments: dict = None) -> Optional[dict]:
+    def _mcp_call(self, tool_name: str, arguments: dict = None, timeout: int = 8) -> Optional[dict]:
         """
         Call a tool on the CMC Data MCP server (https://mcp.coinmarketcap.com/mcp).
         This is a plain JSON-RPC-over-HTTP POST — no session handshake or SSE
@@ -111,7 +111,7 @@ class CMCAdapter:
             },
         )
         try:
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
                 envelope = json.loads(r.read())
             text = envelope["result"]["content"][0]["text"]
             return json.loads(text)
@@ -138,6 +138,32 @@ class CMCAdapter:
         than a per-asset funding_rate_zscore replacement.
         """
         return self._mcp_call("get_global_crypto_derivatives_metrics")
+
+    def get_live_cross_check_parallel(self, cmc_id) -> tuple:
+        """
+        Fetch TA and derivatives from the CMC Data MCP in parallel threads.
+        Returns (cmc_ta, cmc_derivatives) — either may be None on failure.
+
+        Running both calls concurrently cuts total wait time from
+        (t_ta + t_derivatives) to max(t_ta, t_derivatives), which halves
+        the worst-case latency when the MCP server is slow.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        cmc_ta = None
+        cmc_derivatives = None
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            fut_ta   = pool.submit(self.get_technical_analysis_live, cmc_id)
+            fut_deriv = pool.submit(self.get_derivatives_snapshot_live)
+            for fut in as_completed([fut_ta, fut_deriv], timeout=10):
+                try:
+                    result = fut.result()
+                    if fut is fut_ta:
+                        cmc_ta = result
+                    else:
+                        cmc_derivatives = result
+                except Exception:
+                    pass
+        return cmc_ta, cmc_derivatives
 
     def get_ohlcv_daily(self, symbol: str, count: int = 365) -> list[dict]:
         """

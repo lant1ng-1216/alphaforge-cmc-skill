@@ -142,8 +142,7 @@ def generate_strategy(user_input: str, cmc_api_key: str, step_callback=None) -> 
     # serverless IP, same class of issue as the Binance fallback), the core
     # pipeline still runs unaffected on AlphaForge's own computed features.
     live_cross_check = None
-    cmc_ta = cmc.get_technical_analysis_live(quote.get("cmc_id"))
-    cmc_derivatives = cmc.get_derivatives_snapshot_live()
+    cmc_ta, cmc_derivatives = cmc.get_live_cross_check_parallel(quote.get("cmc_id"))
     if cmc_ta or cmc_derivatives:
         live_cross_check = {}
         if cmc_ta:

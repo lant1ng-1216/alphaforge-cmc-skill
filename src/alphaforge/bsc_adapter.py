@@ -97,40 +97,68 @@ def get_bsc_block_stats() -> dict:
     return result
 
 
+def _fetch_dexscreener_pairs(contract: str, timeout: int = 10) -> list[dict]:
+    """Fetch active PancakeSwap/BSC pairs for a given token contract from DexScreener."""
+    url = f"{DEXSCREENER_API}/tokens/{contract}"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "AlphaForge/1.0", "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            data = json.loads(r.read().decode())
+        return [
+            p for p in data.get("pairs", [])
+            if p.get("chainId") == "bsc"
+            and p.get("dexId") == "pancakeswap"
+            # Filter dead pairs: require at least $500 24h volume and $10k liquidity
+            and float(p.get("volume", {}).get("h24", 0) or 0) > 500
+            and float((p.get("liquidity") or {}).get("usd", 0) or 0) > 10_000
+        ]
+    except Exception:
+        return []
+
+
 def get_pancakeswap_activity(cmc_api_key: str) -> dict:
     """
     Fetch PancakeSwap DEX metrics via DexScreener's free public API.
-    Queries CAKE token pairs on BSC to derive aggregate 24h DEX volume
-    and classifies activity relative to a baseline threshold.
-    No API key required — DexScreener is an open public endpoint.
+
+    Queries two BSC token contracts in sequence to build a robust volume estimate:
+    - CAKE (primary PancakeSwap governance token)
+    - WBNB (highest-liquidity BSC asset; proxy for overall DEX activity)
+
+    Dead pairs (< $500 24h volume or < $10k liquidity) are filtered out before
+    aggregation to avoid 0-volume distortion from stale/inactive pairs.
+
     cmc_api_key is accepted for interface compatibility but not used here.
     """
+    # CAKE on BSC — primary PancakeSwap token
+    CAKE_BSC  = "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82"
+    # WBNB on BSC — highest-volume anchor; fallback when CAKE pairs are sparse
+    WBNB_BSC  = "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"
+
     result = {"available": False}
     try:
-        # CAKE contract on BSC — the primary PancakeSwap liquidity token
-        cake_bsc = "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82"
-        url = f"{DEXSCREENER_API}/tokens/{cake_bsc}"
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "AlphaForge/1.0", "Accept": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=10) as r:
-            data = json.loads(r.read().decode())
+        pairs = _fetch_dexscreener_pairs(CAKE_BSC)
+        volume_24h = sum(float(p.get("volume", {}).get("h24", 0) or 0) for p in pairs)
 
-        pairs = [
-            p for p in data.get("pairs", [])
-            if p.get("chainId") == "bsc" and p.get("dexId") == "pancakeswap"
-        ]
+        # If CAKE returns no meaningful volume (data gap), fall back to WBNB
+        # as a proxy for total PancakeSwap activity on BSC.
+        source_token = "CAKE"
+        if volume_24h < 50_000:
+            wbnb_pairs = _fetch_dexscreener_pairs(WBNB_BSC)
+            wbnb_vol = sum(float(p.get("volume", {}).get("h24", 0) or 0) for p in wbnb_pairs)
+            if wbnb_vol > volume_24h:
+                pairs = wbnb_pairs
+                volume_24h = wbnb_vol
+                source_token = "WBNB"
+
         if not pairs:
             return result
 
-        # Aggregate 24h volume across all CAKE/BSC PancakeSwap pairs
-        volume_24h = sum(float(p.get("volume", {}).get("h24", 0) or 0) for p in pairs)
-
-        # Baseline: $2M/day is a typical quiet day for CAKE on PancakeSwap
-        # >$4M = surge, <$1M = quiet
-        baseline = 2_000_000
-        relative = "normal"
+        # Baseline calibrated to CAKE pairs: $2M/day quiet, $4M+ surge.
+        # WBNB pairs have ~10× higher raw volume; scale baseline accordingly.
+        baseline = 2_000_000 if source_token == "CAKE" else 20_000_000
         if volume_24h > baseline * 2:
             relative = "surge"
             label = f"DEX surge (${volume_24h/1e6:.1f}M 24h, >2× baseline)"
@@ -138,6 +166,7 @@ def get_pancakeswap_activity(cmc_api_key: str) -> dict:
             relative = "quiet"
             label = f"DEX quiet (${volume_24h/1e6:.1f}M 24h, <0.5× baseline)"
         else:
+            relative = "normal"
             label = f"DEX normal (${volume_24h/1e6:.1f}M 24h)"
 
         result = {
@@ -146,7 +175,7 @@ def get_pancakeswap_activity(cmc_api_key: str) -> dict:
             "pancakeswap_pairs_count": len(pairs),
             "dex_activity": relative,
             "dex_activity_label": label,
-            "source": "DexScreener",
+            "source": f"DexScreener/{source_token}",
         }
     except Exception:
         pass
