@@ -47,6 +47,7 @@ def resolve_asset(cmc: CMCAdapter, intent: StrategyIntent) -> dict:
 
     to_try = filtered or candidates
     last_error: Optional[Exception] = None
+    last_is_network = False
     for candidate in to_try:
         try:
             quote = cmc.get_quote(candidate)
@@ -54,9 +55,22 @@ def resolve_asset(cmc: CMCAdapter, intent: StrategyIntent) -> dict:
             return quote
         except Exception as exc:
             last_error = exc
+            # Distinguish network/SSL failures from "symbol not found" so the
+            # error message guides the user correctly.
+            err_str = str(exc).lower()
+            last_is_network = any(k in err_str for k in (
+                "ssl", "eof", "timeout", "connection", "urlopen", "network",
+                "gaierror", "remotedisconnected",
+            ))
             continue
 
     tried = ", ".join(candidates)
+    if last_is_network:
+        raise ValueError(
+            f"Network error while connecting to CoinMarketCap API "
+            f"(SSL/connection failure). Check your internet connection or VPN "
+            f"and try again. Last error: {last_error}"
+        ) from last_error
     raise ValueError(
         f"Could not find a tradable asset on CoinMarketCap. Tried: {tried}. "
         f"Mention a valid ticker (e.g. BTC, ETH, SOL, SUI)."

@@ -792,9 +792,9 @@ def main():
         except Exception as e:
             if RICH:
                 console.print(f"\n[bold red]{S['error_lbl']}:[/bold red] {e}")
+                console.print(f"[dim]请重试，或换一个资产代码（如 BTC、ETH、SOL、BNB）[/dim]" if S.get("summary_title","").startswith("AlphaForge — 执行") else "[dim]Please retry, or use a different ticker (e.g. BTC, ETH, SOL, BNB)[/dim]")
             else:
                 print(f"{S['error_lbl']}: {e}")
-            raise
 
 
 if __name__ == "__main__":
