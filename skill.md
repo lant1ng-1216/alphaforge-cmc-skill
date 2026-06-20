@@ -160,7 +160,7 @@ Report:
 
 **Why this matters**: A single backtest is a point estimate on one path through history. 1000 bootstrap paths reveal the full distribution of possible outcomes under the same rules.
 
-### STEP 9 — Three-Layer Strategy Review (Agent Chain)
+### STEP 9 — Three-Layer Strategy Review (Agent Chain + Strategy Doctrine)
 
 An independent three-agent review chain evaluates the strategy after all quantitative evidence is available:
 
@@ -173,6 +173,13 @@ An independent three-agent review chain evaluates the strategy after all quantit
 - Strategy-regime canonical fit
 - Entry condition feasibility given current indicator values
 - User intent vs regime conflict detection
+
+**Strategy Doctrine** — persistent institutional memory:
+- Every completed run writes a compact record to `~/.alphaforge/doctrine.json`: asset, regime, strategy type, alpha vs B&H, drawdown, Monte Carlo confidence, and Gatekeeper verdict
+- Before the Gatekeeper evaluates a new strategy, it queries the doctrine for prior runs in the same regime × strategy combination
+- The doctrine summary is injected into the Gatekeeper's evidence packet: historical alpha, drawdown, and verdict pattern inform the current decision
+- First run in a combination: Gatekeeper operates on current data alone. Second run onward: the Gatekeeper reasons "we've seen this combo before — here's what happened"
+- Doctrine grows over time, across assets, across sessions. The more AlphaForge is used, the more calibrated its judgements become.
 
 **Gatekeeper** (DeepSeek LLM reasoning, not rule-based) — final synthesis:
 - Receives a structured evidence packet: both upstream agent reports, 365-day backtest, Monte Carlo distribution, walk-forward consistency, and user intent

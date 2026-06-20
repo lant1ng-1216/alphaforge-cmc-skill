@@ -60,7 +60,7 @@ After every backtest, AlphaForge runs 1,000 bootstrap resamplings of the strateg
 
 A strategy with median Sharpe 0.9 but p5 Sharpe −1.5 tells a very different story from one with p5 Sharpe 0.3. No hackathon submission has this.
 
-### 6. Three-layer Agent review chain
+### 6. Three-layer Agent review chain + Strategy Experience Doctrine
 
 Every strategy is evaluated by three independent agents after all quantitative evidence is in:
 
@@ -69,6 +69,8 @@ Every strategy is evaluated by three independent agents after all quantitative e
 - **Gatekeeper** (DeepSeek LLM, not rule-based) — receives a structured evidence packet containing both upstream agent reports, 365-day backtest, Monte Carlo distribution, walk-forward consistency, and user intent, then reasons about all of it semantically before issuing a binding verdict: `APPROVED` / `APPROVED_WITH_WARNINGS` / `CONDITIONALLY_APPROVED` / `REJECTED`
 
 The critical distinction: other multi-agent review systems use `if/else` threshold checks for the final verdict. AlphaForge's Gatekeeper is a real LLM reasoning step — it understands context (e.g. a negative-Sharpe strategy with +42pp alpha in a bear market is not a failure), produces natural-language deployment guidance, and identifies non-obvious risks. Falls back to deterministic rules if no API key is set.
+
+**Strategy Experience Doctrine**: every completed run writes a compact record to `~/.alphaforge/doctrine.json` — asset, regime, strategy type, alpha vs B&H, drawdown, MC confidence, and Gatekeeper verdict. Before evaluating a new strategy, the Gatekeeper queries the doctrine for prior runs in the same regime × strategy combination and injects a historical performance summary into its evidence packet. The Gatekeeper can now say "we've run this combo 3 times before — average alpha +24pp, always approved" rather than treating every run as a fresh start. The doctrine grows with use, making AlphaForge's judgements more calibrated over time — a genuine learning loop that no other Track 2 submission implements.
 
 ### 7. BSC Ecosystem Native Layer
 
@@ -282,6 +284,7 @@ alphaforge-cmc-skill/
     spec_validator.py              ← JSON Schema validation
     report_generator.py            ← executive summary
     visualizer.py                  ← equity curve PNG chart
+    doctrine.py                    ← Strategy Experience Doctrine (persistent learning memory)
   demo/
     run_demo.py                    ← interactive terminal demo (rich UI, bilingual)
     agent_hub_validation/          ← live CMC Agent Hub test transcript
@@ -294,6 +297,9 @@ alphaforge-cmc-skill/
     test_regime_classifier.py
     test_backtester.py
     test_spec_validator.py
+    test_monte_carlo.py
+    test_strategy_reviewer.py
+    test_doctrine.py
 ```
 
 ---

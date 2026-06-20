@@ -337,6 +337,7 @@ def _run_gatekeeper_llm(
     walk_forward: list[dict],
     monte_carlo: dict,
     intent: dict,
+    doctrine_context: str | None = None,
 ) -> dict | None:
     """
     LLM-powered Gatekeeper using DeepSeek.
@@ -361,6 +362,7 @@ def _run_gatekeeper_llm(
     mc_dd_p95 = monte_carlo.get("max_drawdown_pct", {}).get("p95")
     bt_alpha = backtest.get("total_return_pct", 0) - backtest.get("buy_and_hold_return_pct", 0)
 
+    _no_doctrine_msg = "=== STRATEGY DOCTRINE ===\n  No prior runs recorded for this regime x strategy combination."
     wf_summary = []
     for p in walk_forward:
         wf_summary.append(
@@ -405,6 +407,8 @@ style: {intent.get('style','')}, risk_profile: {intent.get('risk_profile','')}
 
 === WALK-FORWARD CONSISTENCY ===
 {chr(10).join(wf_summary) if wf_summary else "  Not available"}
+
+{doctrine_context or _no_doctrine_msg}
 """.strip()
 
     try:
@@ -431,6 +435,7 @@ def run_gatekeeper(
     walk_forward: list[dict],
     monte_carlo: dict,
     intent: dict | None = None,
+    doctrine_context: str | None = None,
 ) -> GatekeeperReview:
     """
     LLM-powered Gatekeeper (DeepSeek).
@@ -443,7 +448,8 @@ def run_gatekeeper(
 
     # ── Try LLM Gatekeeper first ────────────────────────────────────────────
     llm_result = _run_gatekeeper_llm(
-        risk_review, regime_review, backtest, walk_forward, monte_carlo, intent
+        risk_review, regime_review, backtest, walk_forward, monte_carlo, intent,
+        doctrine_context=doctrine_context,
     )
 
     if llm_result:
@@ -573,6 +579,7 @@ def review_strategy(
     backtest: dict,
     walk_forward: list[dict],
     monte_carlo: dict,
+    doctrine_context: str | None = None,
 ) -> dict:
     """
     Run the full three-agent review chain and return a serializable result dict.
@@ -596,7 +603,13 @@ def review_strategy(
         walk_forward=walk_forward,
         monte_carlo=monte_carlo,
         intent=intent,
+        doctrine_context=doctrine_context,
     )
+
+    doctrine_records = len([
+        line for line in (doctrine_context or "").splitlines()
+        if line.startswith("  Run ")
+    ])
 
     return {
         "final_verdict": gate.final_verdict,
@@ -604,6 +617,7 @@ def review_strategy(
         "summary": gate.summary,
         "warnings": gate.warnings,
         "rejections": gate.rejections,
+        "doctrine_records_consulted": doctrine_records,
         "risk_agent": {
             "verdict": risk_review.verdict,
             "confidence": round(risk_review.confidence, 2),

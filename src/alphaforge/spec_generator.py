@@ -14,6 +14,7 @@ from .spec_validator import validate_spec
 from .monte_carlo import run_monte_carlo
 from .strategy_reviewer import review_strategy
 from .bsc_adapter import get_bsc_ecosystem_signals
+from .doctrine import build_doctrine_context, save_doctrine_record
 
 
 def _round_sig(v: float, sig: int = 6) -> float:
@@ -223,7 +224,10 @@ def generate_strategy(user_input: str, cmc_api_key: str, step_callback=None) -> 
     )
 
     # Step 9: Three-layer Agent Review chain
+    # Query the doctrine for prior runs in the same regime × strategy combination
+    # so the Gatekeeper can reason with historical context, not just current data.
     _step(9, "Running three-layer strategy review (Risk → Regime → Gatekeeper)…")
+    doctrine_context = build_doctrine_context(regime_result.primary, template_name)
     review_results = review_strategy(
         spec=spec,
         features=feat,
@@ -232,7 +236,24 @@ def generate_strategy(user_input: str, cmc_api_key: str, step_callback=None) -> 
         backtest=backtest_results,
         walk_forward=walk_forward_results,
         monte_carlo=monte_carlo_results,
+        doctrine_context=doctrine_context,
     )
+
+    # Persist this run to the doctrine so future Gatekeeper calls can learn from it.
+    try:
+        save_doctrine_record(
+            asset=intent.asset,
+            regime=regime_result.primary,
+            strategy_type=template_name,
+            timeframe=intent.timeframe,
+            style=intent.style,
+            backtest=backtest_results,
+            monte_carlo=monte_carlo_results,
+            gatekeeper_verdict=review_results.get("final_verdict", "UNKNOWN"),
+            gatekeeper_confidence=review_results.get("confidence", 0),
+        )
+    except Exception:
+        pass  # doctrine write failure must never break the main pipeline
 
     # Step 10: Build explanation + failure modes
     _step(10, "Generating report, explanation & failure modes…")
@@ -785,7 +806,14 @@ def print_rich_output(result: dict, S: dict = None) -> None:
         }.get(final_v, "white")
         import os as _os
         gk_mode = "[bold green]DeepSeek LLM[/bold green]" if _os.getenv("DEEPSEEK_API_KEY") else "[dim]rule-based fallback[/dim]"
+        doctrine_n = rev.get("doctrine_records_consulted", 0)
+        doctrine_label = (
+            f"  [dim]📚 Doctrine: [bold]{doctrine_n}[/bold] prior run{'s' if doctrine_n != 1 else ''} consulted[/dim]"
+            if doctrine_n > 0 else
+            "  [dim]📚 Doctrine: first run in this regime × strategy combination[/dim]"
+        )
         console.print(f"  [{verdict_color}]{final_v}[/{verdict_color}]  (confidence {conf}%)  [dim]Gatekeeper: {gk_mode}[/dim]")
+        console.print(doctrine_label)
         console.print(f"  [italic]{rev.get('summary', '')}[/italic]")
         console.print()
 
