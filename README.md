@@ -29,7 +29,7 @@ or in Chinese:
 
 ## What Makes AlphaForge Different
 
-Most Track 2 submissions will generate a strategy suggestion. AlphaForge goes four steps further:
+Most Track 2 submissions will generate a strategy suggestion. AlphaForge goes seven steps further:
 
 ### 1. Eight-regime market classifier (not just bull/bear)
 The regime classifier detects one of 8 distinct states — `bullish_trend`, `bearish_trend`, `panic_reversal`, `sentiment_overheated`, `high_volatility_chop`, `low_volatility_accumulation`, `derivatives_crowded_long`, `neutral` — and selects a strategy template appropriate for *that specific regime*. The strategy switches automatically when the market structure changes. A momentum strategy in a panic regime is not generated.
@@ -50,7 +50,27 @@ Real market data, not fabricated inputs.
 ### 4. JSON Schema validation on every output
 Every generated strategy spec is validated against a strict JSON Schema (`schemas/strategy_spec.schema.json`) that enforces required fields, valid enums, and risk parameter ranges before the spec is returned. Invalid specs are caught and reported — the system cannot silently output garbage.
 
-### 5. LLM-powered intent parsing (DeepSeek)
+### 5. Monte Carlo simulation (1000 bootstrap paths)
+
+After every backtest, AlphaForge runs 1,000 bootstrap resamplings of the strategy's daily equity returns to convert the single deterministic result into a **probability distribution**. Output includes p5/p25/p50/p75/p95 percentile bands for total return, Sharpe ratio, and max drawdown, plus:
+
+- P(positive return): what fraction of 1000 paths end in profit?
+- P(Sharpe > 1): what fraction achieve a professional-grade Sharpe?
+- P(drawdown > 20%): tail risk probability across all paths
+
+A strategy with median Sharpe 0.9 but p5 Sharpe −1.5 tells a very different story from one with p5 Sharpe 0.3. No hackathon submission has this.
+
+### 6. Three-layer Agent review chain
+
+Every strategy is evaluated by three independent agents after all quantitative evidence is in:
+
+- **RiskAgent** — checks whether stop-loss, position size, and drawdown limits are well-calibrated against current market volatility
+- **RegimeAgent** — independently re-validates regime classification and checks whether the selected strategy is the canonical fit, and whether entry conditions are currently feasible
+- **Gatekeeper** — synthesizes both upstream verdicts with Monte Carlo probabilities and walk-forward consistency, issuing a binding verdict: `APPROVED` / `APPROVED_WITH_WARNINGS` / `CONDITIONALLY_APPROVED` / `REJECTED`
+
+This mirrors professional multi-agent review patterns for strategy approval workflows.
+
+### 7. LLM-powered intent parsing (DeepSeek)
 The natural language input is parsed by **DeepSeek** (via its OpenAI-compatible API) to extract structured strategy intent: asset, timeframe, style, constraints, and risk profile. This means users can write in any language, use slang, or describe their market view in plain terms — the parser handles it. Falls back to rule-based parsing if no API key is set, so the skill works with or without LLM access.
 
 ### 6. Why AlphaForge is more rigorous than similar submissions
@@ -104,7 +124,11 @@ Backtester                            — 365-day simulation vs buy-and-hold
   ↓
 Walk-Forward Check                    — same rules, two independent half-periods (no refitting)
   ↓
-Rich Terminal Report                  — regime + spec + backtest + walk-forward + failure modes
+Monte Carlo Simulation (1000 paths)   — bootstrap equity returns → p5/p50/p95 bands + probability metrics
+  ↓
+3-Layer Agent Review Chain            — RiskAgent → RegimeAgent → Gatekeeper (APPROVED / WARN / REJECT)
+  ↓
+Rich Terminal Report                  — regime + spec + backtest + walk-forward + MC + review verdict
 ```
 
 ---
