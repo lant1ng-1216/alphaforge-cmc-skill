@@ -31,9 +31,11 @@ Fetch live data via CoinMarketCap API:
 ### STEP 2b — BSC Ecosystem Layer (BNB-native assets only)
 When the target asset is BNB-native (BNB, CAKE, and other BSC ecosystem tokens), AlphaForge fetches an additional layer of on-chain and DEX signals not available from CMC alone:
 
-**PancakeSwap DEX activity** (via CMC exchange API, same key):
-- 24h trading volume vs 7-day rolling average
-- Activity label: `DEX surge` (>1.5× avg) / `DEX quiet` (<0.6× avg) / `normal`
+**PancakeSwap DEX activity** (via DexScreener free public API — no key required):
+- Primary source: CAKE token contract on BSC; dead pairs (< $500 24h vol / < $10k liquidity) filtered out
+- Fallback: WBNB contract (highest-liquidity BSC anchor) when CAKE pairs return < $50k aggregate volume
+- Activity label: `DEX surge` (> 2× baseline) / `DEX quiet` (< 0.5× baseline) / `normal`
+- Source tag in output: `DexScreener/CAKE` or `DexScreener/WBNB`
 
 **BSC chain health** (via public BSC JSON-RPC — no extra key required):
 - Average block time over last 100 blocks (normal ≈ 3s)
@@ -47,7 +49,15 @@ When the target asset is BNB-native (BNB, CAKE, and other BSC ecosystem tokens),
 This step is silently skipped for non-BSC assets — the core pipeline is unaffected.
 
 ### STEP 3 — Feature Engineering
-Compute technical features from 365-day daily OHLCV (Binance public API, CMC fallback):
+Compute technical features from native-timeframe OHLCV (Binance public API, CMC fallback):
+- **4h strategy** → 2190 real 4H bars (365 days × 6, paginated across 3 requests)
+- **1d strategy** → 365 daily bars
+- **1w strategy** → 52 weekly bars
+- **1h strategy** → 1000 hourly bars (~42 days)
+
+Using the strategy's actual timeframe eliminates the coarseness error of approximating 4H logic on daily closes. The terminal output shows `2190 × 4h` to make the data granularity explicit.
+
+Indicators computed:
 - EMA 20, EMA 50
 - RSI 14
 - MACD histogram
@@ -230,9 +240,10 @@ AlphaForge supports English and Chinese output. The interactive demo (`demo/run_
 
 | Source | Data | Key required |
 |---|---|---|
-| CoinMarketCap API | Price quotes, Fear & Greed, global metrics, PancakeSwap DEX volume | `CMC_API_KEY` |
-| CMC Data MCP (`mcp.coinmarketcap.com`) | Official TA (RSI/MACD), derivatives snapshot | same key |
-| Binance public API | Historical daily OHLCV (365 days) | none |
+| CoinMarketCap API | Price quotes, Fear & Greed, global metrics | `CMC_API_KEY` |
+| CMC Data MCP (`mcp.coinmarketcap.com`) | Official TA (RSI/MACD), derivatives snapshot — fetched in parallel | same key |
+| Binance public API | Native-timeframe OHLCV (4H→2190 bars, 1D→365 bars, 1W→52 bars) | none |
+| DexScreener free API | PancakeSwap 24h DEX volume (CAKE primary, WBNB fallback) | none |
 | BSC public JSON-RPC (`bsc-dataseed.binance.org`) | Block time, chain health — BNB-native assets only | none |
 | DeepSeek API | LLM-powered intent parsing + Gatekeeper reasoning | `DEEPSEEK_API_KEY` (optional) |
 

@@ -37,7 +37,20 @@ The regime classifier detects one of 8 distinct states — `bullish_trend`, `bea
 ### 2. Walk-forward consistency check (overfitting guard)
 Every strategy spec is tested not just on the full backtest window, but also across **two independent historical half-periods** with no parameter re-fitting. If a strategy only works on one window, the walk-forward table exposes it. This is the standard anti-overfitting check used in professional quant workflows — almost no hackathon submission bothers.
 
-### 3. Live CMC Data MCP cross-check
+### 3. Native-timeframe backtesting (4H strategies use real 4H bars)
+
+AlphaForge fetches OHLCV data at the strategy's actual timeframe via Binance public API — no key required:
+
+| Strategy timeframe | Bars fetched | Window |
+|---|---|---|
+| `4h` | **2190 bars** (3 paginated requests) | 365 days |
+| `1d` | 365 bars | 365 days |
+| `1w` | 52 bars | 1 year |
+| `1h` | 1000 bars | ~42 days |
+
+A 4H strategy backtested on daily closes has 6× coarser entry/exit simulation than one using real 4H bars. AlphaForge eliminates this approximation error. The terminal output shows `2190 × 4h` to make the data source explicit.
+
+### 5. Live CMC Data MCP cross-check
 AlphaForge calls CoinMarketCap's **Data MCP** (`mcp.coinmarketcap.com`) in real time and cross-checks its own computed RSI14 and MACD histogram against CMC's official calculation:
 
 ```
@@ -47,10 +60,10 @@ MACD   — AlphaForge: -0.139  |  CMC official:  0.506
 
 Real market data, not fabricated inputs.
 
-### 4. JSON Schema validation on every output
+### 6. JSON Schema validation on every output
 Every generated strategy spec is validated against a strict JSON Schema (`schemas/strategy_spec.schema.json`) that enforces required fields, valid enums, and risk parameter ranges before the spec is returned. Invalid specs are caught and reported — the system cannot silently output garbage.
 
-### 5. Monte Carlo simulation (1000 bootstrap paths)
+### 7. Monte Carlo simulation (1000 bootstrap paths)
 
 After every backtest, AlphaForge runs 1,000 bootstrap resamplings of the strategy's daily equity returns to convert the single deterministic result into a **probability distribution**. Output includes p5/p25/p50/p75/p95 percentile bands for total return, Sharpe ratio, and max drawdown, plus:
 
@@ -60,7 +73,7 @@ After every backtest, AlphaForge runs 1,000 bootstrap resamplings of the strateg
 
 A strategy with median Sharpe 0.9 but p5 Sharpe −1.5 tells a very different story from one with p5 Sharpe 0.3. No hackathon submission has this.
 
-### 6. Three-layer Agent review chain + Strategy Experience Doctrine
+### 8. Three-layer Agent review chain + Strategy Experience Doctrine
 
 Every strategy is evaluated by three independent agents after all quantitative evidence is in:
 
@@ -72,7 +85,7 @@ The critical distinction: other multi-agent review systems use `if/else` thresho
 
 **Strategy Experience Doctrine**: every completed run writes a compact record to `~/.alphaforge/doctrine.json` — asset, regime, strategy type, alpha vs B&H, drawdown, MC confidence, and Gatekeeper verdict. Before evaluating a new strategy, the Gatekeeper queries the doctrine for prior runs in the same regime × strategy combination and injects a historical performance summary into its evidence packet. The Gatekeeper can now say "we've run this combo 3 times before — average alpha +24pp, always approved" rather than treating every run as a fresh start. The doctrine grows with use, making AlphaForge's judgements more calibrated over time — a genuine learning loop that no other Track 2 submission implements.
 
-### 7. BSC Ecosystem Native Layer
+### 9. BSC Ecosystem Native Layer
 
 When the target asset is BNB-native (BNB, CAKE, and other BSC ecosystem tokens), AlphaForge activates an additional data layer not available from any other Track 2 submission:
 
@@ -84,10 +97,10 @@ When the target asset is BNB-native (BNB, CAKE, and other BSC ecosystem tokens),
 
 This layer is automatically skipped for non-BSC assets so the pipeline remains universal.
 
-### 8. LLM-powered intent parsing (DeepSeek)
+### 10. LLM-powered intent parsing (DeepSeek)
 The natural language input is parsed by **DeepSeek** (via its OpenAI-compatible API) to extract structured strategy intent: asset, timeframe, style, constraints, and risk profile. This means users can write in any language, use slang, or describe their market view in plain terms — the parser handles it. Falls back to rule-based parsing if no API key is set, so the skill works with or without LLM access.
 
-### 9. Why AlphaForge is more rigorous than similar submissions
+### 11. Why AlphaForge is more rigorous than similar submissions
 
 Most Track 2 submissions generate strategy suggestions from live snapshots. AlphaForge goes further on two dimensions that matter for quantitative credibility:
 
