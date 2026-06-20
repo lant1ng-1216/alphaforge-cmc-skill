@@ -148,22 +148,25 @@ def build_spec(
 
     elif template_name == "sentiment_divergence":
         base.update({
-            "long_setup": {
-                "conditions": [
+            "entry_rules": {
+                "all": [
                     "price_momentum_10 > 0",
                     "volume_zscore > 0.7",
                     "fear_greed_score < 75",
                     "rsi_14 between 40 and 65",
                 ]
             },
-            "avoid_setup": {
-                "conditions": [
+            "exit_rules": {
+                "any": [
+                    "price < ema_20",
+                    "rsi_14 > 78",
                     "fear_greed_score > 80",
-                    "rsi_14 > 75",
+                    "stop_loss_triggered == true",
                 ]
             },
             "filters": {
-                "regime_note": "Enters only when price action and sentiment are NOT both extreme"
+                "avoid_when": ["fear_greed_score > 80", "rsi_14 > 75"],
+                "regime_note": "Enters only when price action and sentiment are NOT both extreme",
             },
         })
 

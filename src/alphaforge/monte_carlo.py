@@ -80,6 +80,21 @@ def run_monte_carlo(
     if len(daily_returns) < 5:
         return {"error": "Too few data points for Monte Carlo simulation"}
 
+    # If the equity curve is perfectly flat (0-trade strategy held cash the entire period),
+    # all bootstrapped returns will be 0 and probability metrics are meaningless.
+    # Return a dedicated indicator so downstream consumers can handle this case correctly.
+    if all(r == 0.0 for r in daily_returns):
+        return {
+            "n_simulations": 0,
+            "note": "No trades executed — equity curve is flat. Monte Carlo not applicable.",
+            "total_return": {"p5": 0.0, "p25": 0.0, "p50": 0.0, "p75": 0.0, "p95": 0.0},
+            "sharpe_ratio": {"p5": 0.0, "p50": 0.0, "p95": 0.0},
+            "max_drawdown_pct": {"p50": 0.0, "p95": 0.0},
+            "probability_positive_return_pct": None,
+            "probability_sharpe_gt_1_pct": None,
+            "probability_large_drawdown_pct": None,
+        }
+
     n = len(daily_returns)
     sim_returns: list[float] = []
     sim_sharpes: list[float] = []

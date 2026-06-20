@@ -297,6 +297,7 @@ def run_gatekeeper(
     backtest: dict,
     walk_forward: list[dict],
     monte_carlo: dict,
+    intent: dict | None = None,
 ) -> GatekeeperReview:
     """
     Final synthesis agent. Weighs both upstream reviews against quantitative
@@ -326,17 +327,35 @@ def run_gatekeeper(
     mc_prob_positive = monte_carlo.get("probability_positive_return_pct", 50.0)
     mc_p50_sharpe = monte_carlo.get("sharpe_ratio", {}).get("p50", 0.0)
     mc_p95_dd = monte_carlo.get("max_drawdown_pct", {}).get("p95", 0.0)
+    n_trades = backtest.get("number_of_trades", 0)
+    bt_alpha = backtest.get("total_return_pct", 0) - backtest.get("buy_and_hold_return_pct", 0)
 
-    if mc_prob_positive < 30:
-        rejections.append(
-            f"Monte Carlo: only {mc_prob_positive:.0f}% of 1000 simulations produce positive returns. "
-            f"Strategy lacks a reliable edge under bootstrapped conditions."
-        )
-    elif mc_prob_positive < 50:
-        warnings.append(
-            f"Monte Carlo: {mc_prob_positive:.0f}% probability of positive return — "
-            f"below 50% threshold. Edge is weak; consider reducing position size."
-        )
+    # MC is only meaningful when the strategy actually traded.
+    # 0-trade strategies have a flat equity curve → all bootstrapped returns are 0 →
+    # MC probability metrics are not informative. Evaluate those on trade count alone.
+    mc_meaningful = n_trades >= 3 and "error" not in monte_carlo
+
+    if mc_meaningful:
+        # In bear markets, a strategy that preserves capital will have low P(positive)
+        # but still outperforms B&H significantly. Reject only when BOTH conditions hold:
+        # MC P(positive) is very low AND the strategy has no meaningful alpha.
+        if mc_prob_positive < 20 and bt_alpha < 10:
+            rejections.append(
+                f"Monte Carlo: only {mc_prob_positive:.0f}% of 1000 simulations produce positive returns "
+                f"and strategy alpha vs B&H is only {bt_alpha:.1f}pp. "
+                f"Strategy lacks a reliable edge under bootstrapped conditions."
+            )
+        elif mc_prob_positive < 35 and bt_alpha < 5:
+            warnings.append(
+                f"Monte Carlo: {mc_prob_positive:.0f}% probability of positive return with "
+                f"limited alpha ({bt_alpha:.1f}pp vs B&H). Edge is weak in the current regime."
+            )
+        elif mc_prob_positive < 40:
+            warnings.append(
+                f"Monte Carlo: {mc_prob_positive:.0f}% probability of positive return. "
+                f"However, strategy alpha vs B&H is {bt_alpha:+.1f}pp — capital preservation in "
+                f"a down market is consistent with this strategy's design."
+            )
 
     if mc_p95_dd > 35:
         warnings.append(

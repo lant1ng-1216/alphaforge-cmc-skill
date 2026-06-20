@@ -659,7 +659,7 @@ class ProgressRunner:
             print(format_output(result))
             return result
 
-        total_steps = 8
+        total_steps = 10
 
         with Progress(
             SpinnerColumn(style="bold blue"),

@@ -708,12 +708,16 @@ def print_rich_output(result: dict, S: dict = None) -> None:
             f"[red]{dd.get('p95', 0):.1f}%[/red]",
         )
         console.print(mc_t)
-        prob_color = "green" if prob_pos >= 60 else ("yellow" if prob_pos >= 40 else "red")
-        console.print(
-            f"  P(positive return) [{prob_color}]{prob_pos:.0f}%[/{prob_color}]  |  "
-            f"P(Sharpe > 1) {prob_sh1:.0f}%  |  "
-            f"P(drawdown > 20%) [red]{prob_dd:.0f}%[/red]"
-        )
+        if prob_pos is not None:
+            prob_color = "green" if prob_pos >= 60 else ("yellow" if prob_pos >= 40 else "red")
+            console.print(
+                f"  P(positive return) [{prob_color}]{prob_pos:.0f}%[/{prob_color}]  |  "
+                f"P(Sharpe > 1) {prob_sh1:.0f}%  |  "
+                f"P(drawdown > 20%) [red]{prob_dd:.0f}%[/red]"
+            )
+        else:
+            note = mc.get("note", "No trades — Monte Carlo not applicable.")
+            console.print(f"  [dim]{note}[/dim]")
         console.print()
 
     # ── 9. Strategy Review ──────────────────────────────────────────────────
