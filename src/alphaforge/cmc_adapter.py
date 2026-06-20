@@ -219,6 +219,109 @@ class CMCAdapter:
                 for q in quotes
             ]
 
+    def get_ohlcv_by_timeframe(self, symbol: str, timeframe: str) -> list[dict]:
+        """
+        Fetch OHLCV bars at the strategy's native timeframe via Binance public API.
+
+        For sub-daily strategies (4h, 1h, 15m) this returns genuine intraday bars
+        instead of approximating 4H signal logic on 1D closes — a meaningful
+        improvement in backtest fidelity. Bar counts are capped to keep HTTP
+        requests ≤ 3 (Binance limit: 1000 bars per request).
+
+        Timeframe → Binance interval + target bar count:
+          1w  → 1w,  52 bars  (1 year, 1 request)
+          1d  → 1d, 365 bars  (1 year, 1 request)
+          4h  → 4h, 2190 bars (365 days × 6, 3 requests)
+          1h  → 1h, 1000 bars (~42 days,  1 request — capped to avoid 9 requests)
+          15m → 15m, 500 bars (~5 days,   1 request)
+
+        Falls back to get_ohlcv_daily() if Binance returns an error for the pair
+        (e.g. new tokens not listed on Binance, or network issues).
+        """
+        _INTERVAL_CONFIG = {
+            "1w":  ("1w",  52,   7 * 24 * 3600 * 1000),
+            "1d":  ("1d",  365,  1 * 24 * 3600 * 1000),
+            "4h":  ("4h",  2190, 4      * 3600 * 1000),
+            "1h":  ("1h",  1000, 1      * 3600 * 1000),
+            "15m": ("15m", 500,  15     *   60 * 1000),
+        }
+        binance_interval, target_count, bar_ms = _INTERVAL_CONFIG.get(
+            timeframe, ("1d", 365, 24 * 3600 * 1000)
+        )
+
+        # Fast path: single request covers the full window
+        if target_count <= 1000:
+            return self._fetch_binance_klines(symbol, binance_interval, target_count) \
+                   or self.get_ohlcv_daily(symbol)
+
+        # Paginated path: fetch in reverse-chronological batches of 1000 bars
+        # then reassemble in ascending order.
+        import time as _time
+        pair = f"{symbol}USDT"
+        base_url = "https://api.binance.com/api/v3/klines"
+        all_candles: list = []
+        end_ms = int(_time.time() * 1000)
+
+        while len(all_candles) < target_count:
+            need = min(1000, target_count - len(all_candles))
+            start_ms = end_ms - need * bar_ms
+            url = (
+                f"{base_url}?symbol={pair}&interval={binance_interval}"
+                f"&startTime={start_ms}&endTime={end_ms}&limit={need}"
+            )
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            try:
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    batch = json.loads(r.read())
+            except Exception:
+                break
+            if not batch:
+                break
+            all_candles = batch + all_candles   # prepend — building oldest-first
+            end_ms = batch[0][0] - 1            # shift window back
+            if len(batch) < need:
+                break                           # hit the start of available history
+
+        if not all_candles:
+            return self.get_ohlcv_daily(symbol)
+
+        return [
+            {
+                "time": str(c[0]),
+                "open":   float(c[1]),
+                "high":   float(c[2]),
+                "low":    float(c[3]),
+                "close":  float(c[4]),
+                "volume": float(c[5]),
+            }
+            for c in all_candles
+        ]
+
+    def _fetch_binance_klines(self, symbol: str, interval: str, limit: int) -> list[dict]:
+        """Single-request Binance klines fetch. Returns [] on any failure."""
+        pair = f"{symbol}USDT"
+        url = (
+            f"https://api.binance.com/api/v3/klines"
+            f"?symbol={pair}&interval={interval}&limit={limit}"
+        )
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                raw = json.loads(r.read())
+            return [
+                {
+                    "time": str(c[0]),
+                    "open":   float(c[1]),
+                    "high":   float(c[2]),
+                    "low":    float(c[3]),
+                    "close":  float(c[4]),
+                    "volume": float(c[5]),
+                }
+                for c in raw
+            ]
+        except Exception:
+            return []
+
     def get_trending(self, limit: int = 10) -> list[dict]:
         """Trending tokens by CMC ranking."""
         data = self._get("/v1/cryptocurrency/trending/latest", {"limit": limit})

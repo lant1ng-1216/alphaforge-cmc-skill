@@ -106,7 +106,7 @@ def generate_strategy(user_input: str, cmc_api_key: str, step_callback=None) -> 
     _step(2, f"Fetching live CMC market data…")
     quote = resolve_asset(cmc, intent)
     fg = cmc.get_fear_and_greed()
-    ohlcv = cmc.get_ohlcv_daily(intent.asset, count=365)
+    ohlcv = cmc.get_ohlcv_by_timeframe(intent.asset, intent.timeframe)
     global_metrics = cmc.get_global_metrics()
 
     market_context = {
@@ -120,6 +120,7 @@ def generate_strategy(user_input: str, cmc_api_key: str, step_callback=None) -> 
         "fear_greed_label": fg["label"],
         "btc_dominance": global_metrics["btc_dominance"],
         "data_points": len(ohlcv),
+        "ohlcv_timeframe": intent.timeframe,
     }
 
     # Step 3: Compute features
@@ -568,7 +569,7 @@ def print_rich_output(result: dict, S: dict = None) -> None:
     t.add_row(F["24h_7d"],   f"{chg24_str}  /  {chg7_str}")
     t.add_row(F["fg"],       f"[{fg_color}]{fg_score} — {mc['fear_greed_label']}[/{fg_color}]")
     t.add_row(F["btc_dom"],  f"{mc['btc_dominance']:.1f}%")
-    t.add_row(F["ohlcv_bars"], str(mc["data_points"]))
+    t.add_row(F["ohlcv_bars"], f"{mc['data_points']} × {mc.get('ohlcv_timeframe', '1d')}")
     console.print(t)
 
     # ── 3. Feature Engineering ──────────────────────────────────────────────
