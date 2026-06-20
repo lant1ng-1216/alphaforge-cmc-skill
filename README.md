@@ -45,7 +45,7 @@ RSI14  — AlphaForge: 40.59   |  CMC official: 43.30
 MACD   — AlphaForge: -0.139  |  CMC official:  0.506
 ```
 
-This gives judges independent confirmation that the feature engineering is grounded in real market data, not fabricated inputs.
+Real market data, not fabricated inputs.
 
 ### 4. JSON Schema validation on every output
 Every generated strategy spec is validated against a strict JSON Schema (`schemas/strategy_spec.schema.json`) that enforces required fields, valid enums, and risk parameter ranges before the spec is returned. Invalid specs are caught and reported — the system cannot silently output garbage.
