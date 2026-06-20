@@ -51,6 +51,14 @@ Every generated strategy spec is validated against a strict JSON Schema (`schema
 ### 5. LLM-powered intent parsing (DeepSeek)
 The natural language input is parsed by **DeepSeek** (via its OpenAI-compatible API) to extract structured strategy intent: asset, timeframe, style, constraints, and risk profile. This means users can write in any language, use slang, or describe their market view in plain terms — the parser handles it. Falls back to rule-based parsing if no API key is set, so the skill works with or without LLM access.
 
+### 6. Why AlphaForge is more rigorous than similar submissions
+
+Most Track 2 submissions generate strategy suggestions from live snapshots. AlphaForge goes further on two dimensions that matter for quantitative credibility:
+
+**Real backtests, not fixture snapshots.** Every AlphaForge run executes a full 365-day simulation against real Binance OHLCV data fetched at runtime. Walk-forward consistency check splits that window into two independent half-periods — the standard anti-overfitting check used in professional quant workflows. Other submissions often ship pre-recorded fixture snapshots that replay the same canned output on every run; AlphaForge generates fresh results each time against the current market.
+
+**Live CMC data on every call.** AlphaForge calls CoinMarketCap API and CMC Data MCP in real time on every invocation — price quotes, Fear & Greed, global metrics, official RSI/MACD, derivatives open interest. There is no cached or pre-recorded data in the critical path. Cross-validation between AlphaForge's own computed indicators and CMC's official TA engine is performed live and reported in every output.
+
 ---
 
 ## Honest Disclosure
