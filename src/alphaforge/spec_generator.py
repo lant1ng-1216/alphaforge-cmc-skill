@@ -13,6 +13,7 @@ from .backtester import run_backtest, run_walk_forward_backtest
 from .spec_validator import validate_spec
 from .monte_carlo import run_monte_carlo
 from .strategy_reviewer import review_strategy
+from .bsc_adapter import get_bsc_ecosystem_signals
 
 
 def _round_sig(v: float, sig: int = 6) -> float:
@@ -128,6 +129,12 @@ def generate_strategy(user_input: str, cmc_api_key: str, step_callback=None) -> 
     if isinstance(feat.get("macd"), dict):
         feat["macd_histogram"] = feat["macd"].get("histogram")
 
+    # Step 2b: BSC Ecosystem Layer — only triggers for BNB-native assets.
+    # Fetches PancakeSwap DEX activity + BSC chain health from public endpoints
+    # and injects a regime_hint that can boost/dampen classifier confidence.
+    _step(2, "Fetching BSC ecosystem signals (PancakeSwap + chain health)…")
+    bsc_signals = get_bsc_ecosystem_signals(intent.asset, cmc_api_key)
+
     # Step 3b: Live cross-check against CMC's own official technical analysis
     # and a market-wide derivatives/leverage snapshot, via the CMC Data MCP.
     # This is supplementary — if the MCP call fails (e.g. blocked from a
@@ -156,12 +163,16 @@ def generate_strategy(user_input: str, cmc_api_key: str, step_callback=None) -> 
 
     # Step 4: Classify market regime
     _step(4, "Detecting market regime (8 regime types)…")
+    bsc_regime_hint = bsc_signals.get("regime_hint") if bsc_signals else None
+    bsc_confidence_boost = bsc_signals.get("confidence_boost", 0.0) if bsc_signals else 0.0
     regime_result: RegimeResult = classify_regime(
         feat=feat,
         fear_greed=fg["score"],
         price_change_24h=quote["percent_change_24h"],
         price_change_7d=quote["percent_change_7d"],
         volume_change_24h=quote.get("volume_change_24h"),
+        bsc_regime_hint=bsc_regime_hint,
+        bsc_confidence_boost=bsc_confidence_boost,
     )
 
     # Step 5: Select strategy template
@@ -250,6 +261,7 @@ def generate_strategy(user_input: str, cmc_api_key: str, step_callback=None) -> 
         "backtest": backtest_results,
         "walk_forward": walk_forward_results,
         "live_cross_check": live_cross_check,
+        "bsc_ecosystem": bsc_signals,
         "monte_carlo": monte_carlo_results,
         "strategy_review": review_results,
         "explanation": explanation,
@@ -440,6 +452,7 @@ def print_rich_output(result: dict, S: dict = None) -> None:
         "val_title": "Spec Validation",
         "s1_title": "STEP 1 — Parsed Intent",
         "s2_title": "STEP 2 — Live CMC Market Context",
+        "s2b_title": "STEP 2b — BSC Ecosystem Layer (PancakeSwap + Chain Health)",
         "s3_title": "STEP 3 — Feature Engineering",
         "s3b_title": "STEP 3b — Live Cross-Check (CMC Data MCP)",
         "s4_title": "STEP 4 — Market Regime Detection",
@@ -565,6 +578,29 @@ def print_rich_output(result: dict, S: dict = None) -> None:
         if "market_funding_rate" in lcc:
             t.add_row(F["funding"], str(lcc["market_funding_rate"]))
             t.add_row(F["oi"],      f"{lcc.get('market_open_interest')}  ({lcc.get('market_oi_change_24h')} 24h)")
+        console.print(t)
+
+    # ── 2b. BSC Ecosystem Layer ─────────────────────────────────────────────
+    bsc = result.get("bsc_ecosystem")
+    if bsc and bsc.get("bsc_native"):
+        section(S.get("s2b_title", "STEP 2b — BSC Ecosystem Layer (PancakeSwap + Chain Health)"))
+        t = Table(box=box.SIMPLE, show_header=False, padding=(0, 1))
+        t.add_column(style="dim cyan", no_wrap=True)
+        t.add_column()
+        dex = bsc.get("pancakeswap", {})
+        chain = bsc.get("bsc_chain", {})
+        if dex.get("available"):
+            vol = dex.get("pancakeswap_volume_24h_usd", 0)
+            vol_str = f"${vol/1e6:.1f}M" if vol >= 1e6 else f"${vol:,}"
+            t.add_row("PancakeSwap 24h vol", vol_str)
+            t.add_row("DEX activity", f"[bold]{dex.get('dex_activity_label', 'N/A')}[/bold]")
+        if chain.get("available"):
+            t.add_row("BSC avg block time", f"{chain.get('avg_block_time_sec')}s")
+            t.add_row("BSC network health", f"[bold]{chain.get('network_health', 'N/A')}[/bold]")
+        signal_color = "green" if bsc.get("bsc_signal") == "ecosystem_active" else ("red" if bsc.get("bsc_signal") == "ecosystem_quiet" else "yellow")
+        t.add_row("BSC composite signal", f"[{signal_color}]{bsc.get('bsc_signal', 'N/A')}[/{signal_color}]")
+        if bsc.get("regime_hint"):
+            t.add_row("Regime hint injected", f"[dim]{bsc['regime_hint']} (confidence boost {bsc['confidence_boost']:+.0%})[/dim]")
         console.print(t)
 
     # ── 4. Regime ───────────────────────────────────────────────────────────

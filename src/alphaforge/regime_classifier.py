@@ -34,6 +34,8 @@ def classify_regime(
     price_change_24h: float,
     price_change_7d: float,
     volume_change_24h: Optional[float] = None,
+    bsc_regime_hint: Optional[str] = None,
+    bsc_confidence_boost: float = 0.0,
 ) -> RegimeResult:
     """
     Classify market regime from latest feature values + CMC sentiment data.
@@ -41,6 +43,9 @@ def classify_regime(
     Args:
         feat: dict from latest_features()
         fear_greed: CMC Fear & Greed score (0-100)
+        bsc_regime_hint: optional hint from BSC ecosystem layer
+            ("bullish_bsc_ecosystem" | "bearish_bsc_ecosystem" | None)
+        bsc_confidence_boost: float adjustment to final confidence from BSC signals
         price_change_24h: 24h price change %
         price_change_7d: 7d price change %
         volume_change_24h: 24h volume change % (optional)
@@ -159,5 +164,12 @@ def classify_regime(
         primary = "neutral"
         confidence = 0.4
         explanation = "No dominant regime detected. Mixed signals — reduce position size."
+
+    # Apply BSC ecosystem signal as a confidence modifier and secondary tag.
+    # Only adjusts confidence — does not override the primary regime — so the
+    # classifier remains grounded in price/volume/sentiment fundamentals.
+    if bsc_regime_hint:
+        secondary.append(bsc_regime_hint)
+        confidence = min(1.0, max(0.0, confidence + bsc_confidence_boost))
 
     return RegimeResult(primary, secondary, round(confidence, 2), signals, explanation)
