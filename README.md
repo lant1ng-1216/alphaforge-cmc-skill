@@ -4,6 +4,8 @@
 
 Built for **BNB Hack: AI Trading Agent Edition — Track 2: Strategy Skills**.
 
+**On-Chain Identity (ERC-8004):** Registered on BNB Chain Mainnet — [TX 0x81f506...b185](https://bscscan.com/tx/0x81f50684a4399409ebc84129d8074165559ed839cb89321e58f52f01cb95b185) · Agent: `alphaforge-strategy-skill` · Owner: `0xB0088d6Eb46c3C15D878b54900ce1d5AEad54bD7`
+
 ---
 
 ## What It Does
