@@ -17,7 +17,7 @@ import urllib.error
 from typing import Optional
 
 BSC_RPC = "https://bsc-dataseed.binance.org"
-PANCAKESWAP_SUBGRAPH = "https://api.thegraph.com/subgraphs/name/pancakeswap/exchange-v3-bsc"
+DEXSCREENER_API = "https://api.dexscreener.com/latest/dex"
 
 BSC_NATIVE_ASSETS = {
     "BNB", "CAKE", "BUSD", "BSW", "XVS", "ALPACA", "BAKE", "AUTO",
@@ -99,57 +99,54 @@ def get_bsc_block_stats() -> dict:
 
 def get_pancakeswap_activity(cmc_api_key: str) -> dict:
     """
-    Fetch PancakeSwap DEX metrics via CMC's exchange/market endpoint.
-    Uses the standard CMC API key — no extra credentials needed.
-    Returns 24h volume and a relative activity label vs typical ranges.
+    Fetch PancakeSwap DEX metrics via DexScreener's free public API.
+    Queries CAKE token pairs on BSC to derive aggregate 24h DEX volume
+    and classifies activity relative to a baseline threshold.
+    No API key required — DexScreener is an open public endpoint.
+    cmc_api_key is accepted for interface compatibility but not used here.
     """
     result = {"available": False}
     try:
-        url = (
-            "https://pro-api.coinmarketcap.com/v1/exchange/quotes/latest"
-            "?slug=pancakeswap&convert=USD"
-        )
+        # CAKE contract on BSC — the primary PancakeSwap liquidity token
+        cake_bsc = "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82"
+        url = f"{DEXSCREENER_API}/tokens/{cake_bsc}"
         req = urllib.request.Request(
             url,
-            headers={
-                "X-CMC_PRO_API_KEY": cmc_api_key,
-                "Accept": "application/json",
-                "User-Agent": "AlphaForge/1.0",
-            },
+            headers={"User-Agent": "AlphaForge/1.0", "Accept": "application/json"},
         )
         with urllib.request.urlopen(req, timeout=10) as r:
             data = json.loads(r.read().decode())
 
-        # Navigate the CMC exchange response structure
-        exchange_data = data.get("data", {})
-        if not exchange_data:
+        pairs = [
+            p for p in data.get("pairs", [])
+            if p.get("chainId") == "bsc" and p.get("dexId") == "pancakeswap"
+        ]
+        if not pairs:
             return result
-        entry = next(iter(exchange_data.values()), {})
-        quote = entry.get("quote", {}).get("USD", {})
-        volume_24h = quote.get("volume_24h", 0)
-        volume_7d = quote.get("volume_7d", 0)
 
-        # Derive a daily average from 7d for relative comparison
-        avg_daily_7d = volume_7d / 7 if volume_7d else None
+        # Aggregate 24h volume across all CAKE/BSC PancakeSwap pairs
+        volume_24h = sum(float(p.get("volume", {}).get("h24", 0) or 0) for p in pairs)
+
+        # Baseline: $2M/day is a typical quiet day for CAKE on PancakeSwap
+        # >$4M = surge, <$1M = quiet
+        baseline = 2_000_000
         relative = "normal"
-        label = "normal"
-        if avg_daily_7d and avg_daily_7d > 0:
-            ratio = volume_24h / avg_daily_7d
-            if ratio > 1.5:
-                relative = "surge"
-                label = "DEX surge (24h vol >1.5× 7d avg)"
-            elif ratio < 0.6:
-                relative = "quiet"
-                label = "DEX quiet (24h vol <0.6× 7d avg)"
-            else:
-                label = f"DEX normal (24h vol {ratio:.1f}× 7d avg)"
+        if volume_24h > baseline * 2:
+            relative = "surge"
+            label = f"DEX surge (${volume_24h/1e6:.1f}M 24h, >2× baseline)"
+        elif volume_24h < baseline * 0.5:
+            relative = "quiet"
+            label = f"DEX quiet (${volume_24h/1e6:.1f}M 24h, <0.5× baseline)"
+        else:
+            label = f"DEX normal (${volume_24h/1e6:.1f}M 24h)"
 
         result = {
             "available": True,
             "pancakeswap_volume_24h_usd": round(volume_24h),
-            "pancakeswap_volume_7d_avg_usd": round(avg_daily_7d) if avg_daily_7d else None,
-            "dex_activity": relative,  # "surge" | "quiet" | "normal"
+            "pancakeswap_pairs_count": len(pairs),
+            "dex_activity": relative,
             "dex_activity_label": label,
+            "source": "DexScreener",
         }
     except Exception:
         pass
