@@ -20,6 +20,14 @@ STYLE_KEYWORDS = {
     "swing": "momentum",
     "scalp": "momentum",
     "contrarian": "contrarian",
+    "bearish": "contrarian",
+    "short": "contrarian",
+    "hedge": "contrarian",
+    "看空": "contrarian",
+    "做空": "contrarian",
+    "反弹": "mean_reversion",
+    "动量": "momentum",
+    "突破": "breakout",
 }
 
 CONSTRAINT_KEYWORDS = {
@@ -193,13 +201,16 @@ Output ONLY a JSON object with these exact keys:
 }
 
 Rules:
-- If the user says "I'm bearish" or "hedge" → style: mean_reversion
-- If the user says "follow the trend / breakout" → style: momentum or breakout
+- If the user says "I'm bearish / short / 看空 / hedge / avoid longs" → style: contrarian
+- If the user says "mean reversion / bounce / 反弹 / 超卖反弹 / reversal" → style: mean_reversion
+- If the user says "follow the trend / breakout / 动量 / 趋势" → style: momentum or breakout
+- If the user says "panic / capitulation / extreme fear / 恐慌 / 极度恐慌" → style: mean_reversion AND add panic_reversal to constraints
+- IMPORTANT: "bearish / 看空 / short bias" is NOT the same as "mean reversion" — bearish means expecting further decline (contrarian to bullish), mean_reversion means expecting a bounce
 - If timeframe is unclear, default to 4h
 - If asset is unclear, default to BNB
-- If the user mentions "extreme fear / crash / panic" → add panic_reversal to constraints
-- If the user mentions "overheated / FOMO / greed" → add avoid_overheated_sentiment to constraints
-- If the user mentions "low risk / safe / conservative" → risk_profile: conservative
+- If the user mentions "overheated / FOMO / greed / 过热 / 贪婪" → add avoid_overheated_sentiment to constraints
+- If the user mentions "low risk / safe / conservative / 保守" → risk_profile: conservative
+- If the user mentions "aggressive / 激进 / 大仓位" → risk_profile: aggressive
 - If the user writes in Chinese, English, or any language — still output the same JSON
 - Output ONLY the JSON, no explanation, no markdown fences
 """
