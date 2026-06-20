@@ -28,6 +28,24 @@ Fetch live data via CoinMarketCap API:
 - BTC dominance %
 - 24h volume and volume change
 
+### STEP 2b — BSC Ecosystem Layer (BNB-native assets only)
+When the target asset is BNB-native (BNB, CAKE, and other BSC ecosystem tokens), AlphaForge fetches an additional layer of on-chain and DEX signals not available from CMC alone:
+
+**PancakeSwap DEX activity** (via CMC exchange API, same key):
+- 24h trading volume vs 7-day rolling average
+- Activity label: `DEX surge` (>1.5× avg) / `DEX quiet` (<0.6× avg) / `normal`
+
+**BSC chain health** (via public BSC JSON-RPC — no extra key required):
+- Average block time over last 100 blocks (normal ≈ 3s)
+- Network health label: `fast` / `normal` / `congested`
+
+**Composite BSC signal** fed into regime classifier:
+- `ecosystem_active` → confidence boost +10pp on `bullish_trend` or `neutral` regime
+- `ecosystem_quiet` → confidence adjustment −5pp
+- `ecosystem_normal` → no adjustment
+
+This step is silently skipped for non-BSC assets — the core pipeline is unaffected.
+
 ### STEP 3 — Feature Engineering
 Compute technical features from 365-day daily OHLCV (Binance public API, CMC fallback):
 - EMA 20, EMA 50
@@ -205,10 +223,11 @@ AlphaForge supports English and Chinese output. The interactive demo (`demo/run_
 
 | Source | Data | Key required |
 |---|---|---|
-| CoinMarketCap API | Price quotes, Fear & Greed, global metrics | `CMC_API_KEY` |
+| CoinMarketCap API | Price quotes, Fear & Greed, global metrics, PancakeSwap DEX volume | `CMC_API_KEY` |
 | CMC Data MCP (`mcp.coinmarketcap.com`) | Official TA (RSI/MACD), derivatives snapshot | same key |
 | Binance public API | Historical daily OHLCV (365 days) | none |
-| DeepSeek API | LLM-powered intent parsing | `DEEPSEEK_API_KEY` (optional) |
+| BSC public JSON-RPC (`bsc-dataseed.binance.org`) | Block time, chain health — BNB-native assets only | none |
+| DeepSeek API | LLM-powered intent parsing + Gatekeeper reasoning | `DEEPSEEK_API_KEY` (optional) |
 
 **CMC integration architecture**: The Skills Marketplace (`cmc-skill-hub`) exposes pre-packaged evidence-pack skills for regime narrative and cross-validation. The Data MCP (`mcp.coinmarketcap.com/mcp`) exposes raw quotes, official TA, and derivatives data directly. AlphaForge calls the Data MCP live as an independent cross-check (STEP 3b). The historical backtest relies on Binance daily OHLCV since both MCP layers return point-in-time snapshots, not the historical series a backtest needs.
 

@@ -70,10 +70,22 @@ Every strategy is evaluated by three independent agents after all quantitative e
 
 The critical distinction: other multi-agent review systems use `if/else` threshold checks for the final verdict. AlphaForge's Gatekeeper is a real LLM reasoning step — it understands context (e.g. a negative-Sharpe strategy with +42pp alpha in a bear market is not a failure), produces natural-language deployment guidance, and identifies non-obvious risks. Falls back to deterministic rules if no API key is set.
 
-### 7. LLM-powered intent parsing (DeepSeek)
+### 7. BSC Ecosystem Native Layer
+
+When the target asset is BNB-native (BNB, CAKE, and other BSC ecosystem tokens), AlphaForge activates an additional data layer not available from any other Track 2 submission:
+
+**PancakeSwap DEX activity** — fetches real-time 24h trading volume from CMC's exchange API and compares it against the 7-day rolling average to classify DEX state: `surge` / `quiet` / `normal`.
+
+**BSC chain health** — queries the public BSC JSON-RPC (`bsc-dataseed.binance.org`) directly to measure average block time over the last 100 blocks, producing a network health signal: `fast` / `normal` / `congested`. No extra API key required.
+
+**Regime confidence injection** — the composite BSC signal is fed directly into the regime classifier as a confidence modifier. A DEX surge in a bullish regime raises conviction; a quiet DEX in a neutral regime nudges toward `low_volatility_accumulation`. This makes the regime classification genuinely BNB Chain-aware, not just a generic global-crypto assessment.
+
+This layer is automatically skipped for non-BSC assets so the pipeline remains universal.
+
+### 8. LLM-powered intent parsing (DeepSeek)
 The natural language input is parsed by **DeepSeek** (via its OpenAI-compatible API) to extract structured strategy intent: asset, timeframe, style, constraints, and risk profile. This means users can write in any language, use slang, or describe their market view in plain terms — the parser handles it. Falls back to rule-based parsing if no API key is set, so the skill works with or without LLM access.
 
-### 6. Why AlphaForge is more rigorous than similar submissions
+### 9. Why AlphaForge is more rigorous than similar submissions
 
 Most Track 2 submissions generate strategy suggestions from live snapshots. AlphaForge goes further on two dimensions that matter for quantitative credibility:
 
@@ -110,9 +122,14 @@ CMC Data Layer                        — live price, Fear & Greed, global metri
                                         + historical OHLCV (Binance public, CMC fallback)
                                         + CMC Data MCP cross-check (official TA + derivatives)
   ↓
+BSC Ecosystem Layer (BNB-native only) — PancakeSwap 24h DEX volume vs 7d avg (CMC exchange API)
+                                        + BSC chain health via public JSON-RPC (block time)
+                                        + composite bsc_signal → regime confidence injection
+  ↓
 Feature Engineering                   — EMA20/50, RSI14, MACD, volume z-score, realized volatility
   ↓
 Market Regime Classifier (8 regimes)  — bullish / bearish / panic / overheated / chop / accumulation / neutral
+                                        [+ BSC confidence boost/dampening when applicable]
   ↓
 Strategy Template Selector            — maps regime + intent → strategy type
   ↓
@@ -285,10 +302,11 @@ alphaforge-cmc-skill/
 
 | Source | Data | Key Required |
 |---|---|---|
-| CoinMarketCap API | Price quotes, Fear & Greed, global metrics | ✅ `CMC_API_KEY` |
+| CoinMarketCap API | Price quotes, Fear & Greed, global metrics, PancakeSwap DEX volume | ✅ `CMC_API_KEY` |
 | CMC Data MCP | Official TA (RSI/MACD), derivatives snapshot | ✅ (same key) |
 | Binance public API | Historical daily OHLCV | ❌ |
-| DeepSeek API | LLM intent parsing | Optional `DEEPSEEK_API_KEY` |
+| BSC public JSON-RPC | Block time, chain health (BNB-native assets only) | ❌ |
+| DeepSeek API | LLM intent parsing + Gatekeeper reasoning | Optional `DEEPSEEK_API_KEY` |
 
 ---
 
