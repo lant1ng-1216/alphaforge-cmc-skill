@@ -44,7 +44,33 @@
           "monte_carlo":      { "type": "object", "description": "1000-path bootstrap: p5/p50/p95 for return, Sharpe, drawdown" },
           "strategy_review":  { "type": "object", "description": "3-agent review: RiskAgent, RegimeAgent, Gatekeeper verdict" },
           "regime":           { "type": "object", "description": "One of 8 market regimes with confidence and signal values" },
-          "live_cross_check": { "type": "object", "description": "AlphaForge computed indicators vs CMC Data MCP official TA" }
+          "live_cross_check": { "type": "object", "description": "AlphaForge computed indicators vs CMC Data MCP official TA" },
+          "bsc_ecosystem":    { "type": "object", "description": "BSC-native layer: PancakeSwap DEX volume (DexScreener) + BSC chain health (public RPC). Only present for BNB-native assets." }
+        }
+      }
+    },
+    {
+      "unique_name": "alphaforge-bsc-ecosystem",
+      "role": "utility",
+      "display_name": "AlphaForge BSC Ecosystem Signal",
+      "description": "Fetches BNB Chain-native signals for BSC ecosystem tokens: PancakeSwap 24h DEX volume via DexScreener, BSC network health via public JSON-RPC. Produces a composite bsc_signal (ecosystem_active/normal/quiet) injected into the regime classifier as a confidence modifier.",
+      "keywords": ["bsc", "bnb", "pancakeswap", "dex", "chain", "on-chain", "ecosystem"],
+      "bsc_native": true,
+      "input_schema": {
+        "type": "object",
+        "required": ["asset"],
+        "properties": {
+          "asset": { "type": "string", "description": "BSC-native ticker (BNB, CAKE, etc.)" }
+        }
+      },
+      "output_schema": {
+        "type": "object",
+        "properties": {
+          "bsc_signal":        { "type": "string", "enum": ["ecosystem_active", "ecosystem_normal", "ecosystem_quiet"] },
+          "regime_hint":       { "type": "string", "description": "Regime confidence modifier injected into classifier" },
+          "confidence_boost":  { "type": "number", "description": "Floating point confidence delta (e.g. +0.10, -0.05)" },
+          "pancakeswap":       { "type": "object", "description": "DEX volume and activity label from DexScreener" },
+          "bsc_chain":         { "type": "object", "description": "Block time and network health from BSC public RPC" }
         }
       }
     },
@@ -102,6 +128,8 @@
     { "name": "CoinMarketCap API",  "type": "rest",       "provides": ["price", "fear_greed", "global_metrics"] },
     { "name": "CMC Data MCP",       "type": "mcp",        "provides": ["official_ta", "derivatives_snapshot"] },
     { "name": "Binance public API", "type": "rest",       "provides": ["ohlcv_daily_365"] },
-    { "name": "DeepSeek API",       "type": "llm",        "provides": ["intent_parsing"], "optional": true }
+    { "name": "BSC public JSON-RPC","type": "rpc",        "provides": ["block_time", "chain_health"], "optional": true, "note": "BNB-native assets only, no key required" },
+    { "name": "DexScreener API",    "type": "rest",       "provides": ["pancakeswap_dex_volume"], "optional": true, "note": "BNB-native assets only, no key required" },
+    { "name": "DeepSeek API",       "type": "llm",        "provides": ["intent_parsing", "gatekeeper_reasoning"], "optional": true }
   ]
 }
