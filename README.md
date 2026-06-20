@@ -66,9 +66,9 @@ Every strategy is evaluated by three independent agents after all quantitative e
 
 - **RiskAgent** — checks whether stop-loss, position size, and drawdown limits are well-calibrated against current market volatility
 - **RegimeAgent** — independently re-validates regime classification and checks whether the selected strategy is the canonical fit, and whether entry conditions are currently feasible
-- **Gatekeeper** — synthesizes both upstream verdicts with Monte Carlo probabilities and walk-forward consistency, issuing a binding verdict: `APPROVED` / `APPROVED_WITH_WARNINGS` / `CONDITIONALLY_APPROVED` / `REJECTED`
+- **Gatekeeper** (DeepSeek LLM, not rule-based) — receives a structured evidence packet containing both upstream agent reports, 365-day backtest, Monte Carlo distribution, walk-forward consistency, and user intent, then reasons about all of it semantically before issuing a binding verdict: `APPROVED` / `APPROVED_WITH_WARNINGS` / `CONDITIONALLY_APPROVED` / `REJECTED`
 
-This mirrors professional multi-agent review patterns for strategy approval workflows.
+The critical distinction: other multi-agent review systems use `if/else` threshold checks for the final verdict. AlphaForge's Gatekeeper is a real LLM reasoning step — it understands context (e.g. a negative-Sharpe strategy with +42pp alpha in a bear market is not a failure), produces natural-language deployment guidance, and identifies non-obvious risks. Falls back to deterministic rules if no API key is set.
 
 ### 7. LLM-powered intent parsing (DeepSeek)
 The natural language input is parsed by **DeepSeek** (via its OpenAI-compatible API) to extract structured strategy intent: asset, timeframe, style, constraints, and risk profile. This means users can write in any language, use slang, or describe their market view in plain terms — the parser handles it. Falls back to rule-based parsing if no API key is set, so the skill works with or without LLM access.
@@ -126,7 +126,7 @@ Walk-Forward Check                    — same rules, two independent half-perio
   ↓
 Monte Carlo Simulation (1000 paths)   — bootstrap equity returns → p5/p50/p95 bands + probability metrics
   ↓
-3-Layer Agent Review Chain            — RiskAgent → RegimeAgent → Gatekeeper (APPROVED / WARN / REJECT)
+3-Layer Agent Review Chain            — RiskAgent (rules) → RegimeAgent (rules) → Gatekeeper (DeepSeek LLM)
   ↓
 Rich Terminal Report                  — regime + spec + backtest + walk-forward + MC + review verdict
 ```

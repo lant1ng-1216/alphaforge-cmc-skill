@@ -156,10 +156,13 @@ An independent three-agent review chain evaluates the strategy after all quantit
 - Entry condition feasibility given current indicator values
 - User intent vs regime conflict detection
 
-**Gatekeeper** — final synthesis with full evidence:
-- Combines both upstream verdicts with Monte Carlo probabilities and walk-forward consistency
+**Gatekeeper** (DeepSeek LLM reasoning, not rule-based) — final synthesis:
+- Receives a structured evidence packet: both upstream agent reports, 365-day backtest, Monte Carlo distribution, walk-forward consistency, and user intent
+- Sends the full packet to DeepSeek via OpenAI-compatible API and receives a semantic, context-aware verdict — not an `if/else` check
+- Understands nuance: a strategy with negative Sharpe but +40pp alpha in a bear market is correctly evaluated as capital-preserving, not failing
 - Issues binding verdict: `APPROVED` / `APPROVED_WITH_WARNINGS` / `CONDITIONALLY_APPROVED` / `REJECTED`
-- Reports confidence score (0–100) and full reasoning chain
+- Reports confidence score (0–100), reasoning summary, identified key risks, and deployment guidance
+- Falls back to deterministic rule-based logic if `DEEPSEEK_API_KEY` is unavailable — output format is identical
 
 ### STEP 10 — Strategy Explanation
 Plain-language explanation of why this strategy fits the current market regime, what market conditions would change the recommendation, and what the backtest results mean in context.
