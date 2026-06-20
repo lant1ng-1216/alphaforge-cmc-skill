@@ -26,6 +26,8 @@ jobs:
 
       - name: Run unit tests
         run: python -m pytest tests/ -v --tb=short
+        env:
+          PYTHONPATH: src
 
       - name: Verify importability
         run: |
